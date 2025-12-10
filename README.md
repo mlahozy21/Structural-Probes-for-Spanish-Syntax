@@ -50,26 +50,29 @@ es_ancora-ud-test.conllu
 
 ### 3. Data Cleaning & Alignment
 Run the custom cleaning script to extract raw text and remove contraction ranges (fixing the alignment issue):
-
+```
 Bash
 
 python conllu_to_text.py data/es_ancora/es_ancora-ud-train.conllu data/es_ancora/es_ancora-ud-train.txt
 python conllu_to_text.py data/es_ancora/es_ancora-ud-dev.conllu data/es_ancora/es_ancora-ud-dev.txt
 python conllu_to_text.py data/es_ancora/es_ancora-ud-test.conllu data/es_ancora/es_ancora-ud-test.txt
+```
 ### 4. Embedding Generation
 Pre-compute the mBERT embeddings. This freezes the model layers into HDF5 files for faster training.
-
+```
 Bash
 
 python generate_embeddings.py data/es_ancora/es_ancora-ud-train.txt data/es_ancora/es_ancora-ud-train.hdf5
 python generate_embeddings.py data/es_ancora/es_ancora-ud-dev.txt data/es_ancora/es_ancora-ud-dev.hdf5
 python generate_embeddings.py data/es_ancora/es_ancora-ud-test.txt data/es_ancora/es_ancora-ud-test.hdf5
+```
 ### 5. Running the Experiment
 Train the structural probe using the configuration file:
-
+```
 Bash
 
 python structural-probes/run_experiment.py example/config/es_ancora.yaml
+```
 ## 📈 Visualization
 Upon completion, results are saved in example/results/es_ancora/. You will find:
 

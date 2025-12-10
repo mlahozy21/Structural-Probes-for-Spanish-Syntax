@@ -1,0 +1,58 @@
+dataset:
+  observation_fieldnames:
+     - index
+     - sentence
+     - lemma
+     - upos
+     - xpos_sentence
+     - feats
+     - head_indices
+     - deprel
+     - deps
+     - misc
+     - embeddings  # <--- IMPORTANTE: Esta línea arregla el error de "11 vs 12 arguments"
+  corpus:
+    root: data/es_ancora/
+    train_path: es_ancora-ud-train.conllu
+    dev_path: es_ancora-ud-dev.conllu
+    test_path: es_ancora-ud-test.conllu
+  embeddings:
+    type: token 
+    root: data/es_ancora/
+    train_path: es_ancora-ud-train.hdf5
+    dev_path: es_ancora-ud-dev.hdf5
+    test_path: es_ancora-ud-test.hdf5
+  batch_size: 32
+
+model:
+  model_type: BERT-disk   # <--- ESTO es lo que te falta ahora y causa el KeyError
+  model_layer: 0
+  hidden_dim: 768
+  use_disk: True
+
+probe:
+  task_signature: word_pair
+  task_name: parse-distance
+  maximum_rank: 128
+  psd_parameters: True
+  diagonal: False
+  params_path: predictor.params
+
+probe_training:
+  epochs: 10
+  loss: L1
+
+reporting:
+  root: example/results/es_ancora
+  observation_paths:
+    train_path: train.observations
+    dev_path: dev.observations
+    test_path: test.observations
+  prediction_paths:
+    train_path: train.predictions
+    dev_path: dev.predictions
+    test_path: test.predictions
+  reporting_methods:
+    - spearmanr
+    - image_examples
+    - uuas

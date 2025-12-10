@@ -74,7 +74,7 @@ Bash
 python structural-probes/run_experiment.py example/config/es_ancora.yaml
 ```
 ## 📈 Visualization
-Upon completion, results are saved in example/results/es_ancora/. You will find:
+Upon completion, results are saved in results/. You will find:
 
 dev.spearmanr: Quantitative correlation metrics.
 

@@ -28,24 +28,7 @@ The original distance calculation algorithm in `task.py` was iterative and prone
 * **Transformers:** Replaced the obsolete `pytorch-pretrained-bert` with the modern HuggingFace `transformers` library.
 * **Windows/UTF-8:** Enforced `utf-8` encoding across all file I/O operations to correctly handle Spanish accents and special characters on Windows systems.
 
-## 📂 Project Structure
 
-```text
-multilingualbert/
-├── data/
-│   └── es_ancora/
-│       ├── es_ancora-ud-train.conllu  # Original UD dataset
-│       ├── es_ancora-ud-train.txt     # Cleaned text (ranges removed)
-│       └── es_ancora-ud-train.hdf5    # Pre-computed mBERT embeddings
-├── example/
-│   └── config/
-│       └── es_ancora.yaml             # Experiment configuration
-├── structural-probes/                 # Modified source code
-│   ├── data.py                        # Data loader with alignment fix
-│   ├── task.py                        # Optimized Floyd-Warshall
-│   └── run_experiment.py              # Main training script
-├── conllu_to_text.py                  # Custom cleaning script
-└── generate_embeddings.py             # Custom embedding generation script
 🚀 Reproduction Steps
 1. Requirements
 Install the necessary Python packages:

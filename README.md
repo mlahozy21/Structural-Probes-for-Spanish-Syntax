@@ -4,9 +4,14 @@ This repository contains an experimental replication of the paper **"A Structura
 
 The primary objective is to investigate whether multilingual language models (such as **mBERT**) encode Spanish syntactic structure (dependency trees) within their vector geometry, without having been explicitly trained with syntactic supervision.
 
+Additionally, we extend the original methodology by introducing an **Isometric Probe**. This variant constrains the probe to be a rigid rotation (orthogonal transformation), testing the hypothesis that syntax trees exist as "ready-to-use" geometric shapes in the embedding space, rather than requiring distortion (non-uniform scaling) to be revealed.
+
 ## 📊 Results
 
-We trained a linear probe for the **Parse Distance** task using embeddings from the 12th layer of `bert-base-multilingual-cased`.
+We trained two types of probes for the Parse Distance task using embeddings from the 12th layer of `bert-base-multilingual-cased`:
+1. Linear Probe (Baseline): The standard probe allowing arbitrary linear transformation (scaling + rotation).
+2. Isometric Probe (New): A constrained probe allowing only rotation and reflection ($B^T B = I$).
+
 Despite initial alignment challenges regarding Spanish contractions, our results show a strong Spearman correlation, suggesting that mBERT captures significant syntactic information for the Spanish language.
 
 ## Experimental Setup
@@ -16,12 +21,21 @@ Despite initial alignment challenges regarding Spanish contractions, our results
 * **Training:** 30 epochs, L1 Loss, Batch size 32.
 
 We evaluated the probe using UUAS (Undirected Unlabeled Attachment Score) and Spearman Correlation.
-| Metric | Result (Spanish) | Interpretation |
-| :--- | :---: | :--- |
-| **Spearman Correlation** | **0.735** | **High correlation.** Confirms that mBERT captures the geometric distance between syntactically related words in Spanish. |
-| **UUAS** | **0.504** | **Reconstruction accuracy.** Outperforms the random baseline (0.44), demonstrating latent structural learning. |
+| Probe Type | Constraint | Spearman $\rho$ | UUAS (accuracy) | Interpretation |
+| :--- | :---: | :--- | :--- | :--- |
+| **Linear** | **None** | **0.735** | **0.504** | **Latent Structure Found.** Confirms that mBERT captures the geometric distance between syntactically related words in Spanish. The probe successfully recovers syntax by re-weighting dimensions. Outperforms the random baseline (0.44), demonstrating latent structural learning.|
+| **Isometric** | **Orthogonal (Orthogonal ($B^TB=I$))** | **0.658** | **0.375** | **Geometric Mismatch.** The significant drop (-25%) indicates the raw embedding geometry is too distorted to represent trees directly.|
+
+## Geometric Stability Analysis
+
+The performance gap between the Linear and Isometric probes suggests that the embedding space suffers from anisotropy (the "representation cone" problem).
+
+We analyzed the transformation matrix of the successful Linear Probe and found a Condition Number ($\kappa$) of 12.30.
+* **Implication:** mBERT suppresses Spanish syntactic dimensions by a factor of ~12 relative to dominant semantic/frequency dimensions.
+* **Conclusion:** Spanish syntax is present in mBERT, but it is not "geometric" in the Euclidean sense. It exists as extractable features that must be amplified (stretched) by the probe to be used.
 
 > **Note:** The discrepancy in UUAS compared to the original English paper is attributed to mBERT sharing capacity across 104 languages and the richer morphology of Spanish.
+
 
 ## 🛠️ Modifications & Engineering
 
@@ -84,6 +98,20 @@ Bash
 
 python -m scripts/run_experiment es_ancora.yaml
 ```
+
+**To run the Isometric Probe:** Update your `es_ancora.yaml` configuration file to include the `isometric` flag. This will trigger the hard orthogonality constraint on the probe:
+
+```yaml
+probe:
+  task_signature: word_pair
+  task_name: parse-distance
+  maximum_rank: 768
+  psd_parameters: True
+  diagonal: False
+  params_path: predictor.params
+  isometric: True  # <--- Set to True for Isometric Probe
+```
+
 ## 📈 Visualization
 Upon completion, results are saved in example/results/es_ancora. You will find:
 

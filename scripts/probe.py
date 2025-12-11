@@ -2,6 +2,8 @@
 
 import torch.nn as nn
 import torch
+import torch.nn.utils.parametrize as parametrize
+import torch.nn.utils.parametrizations as parametrizations
 
 class Probe(nn.Module):
   pass
@@ -151,3 +153,80 @@ class TwoWordNonPSDProbe(Probe):
     dists = torch.bmm(psd_transformed, diffs.view(batchlen*seqlen*seqlen, rank, 1))
     dists = dists.view(batchlen, seqlen, seqlen)
     return dists
+
+class IsometricTwoWordPSDProbe(Probe):
+    """ Computes squared L2 distance after projection by an ORTHOGONAL matrix.
+    
+    This corresponds to the 'Hard Constraint' hypothesis:
+    If this probe works, the syntax tree exists as a rigid shape in the BERT space.
+    If it fails, the syntax is latent and requires scaling (distortion) to extract.
+    """
+    def __init__(self, args):
+        print('Constructing IsometricTwoWordPSDProbe')
+        super(IsometricTwoWordPSDProbe, self).__init__()
+        self.args = args
+        self.probe_rank = args['probe']['maximum_rank']
+        self.model_dim = args['model']['hidden_dim']
+
+        # We use nn.Linear so we can apply the parametrization easily.
+        # Note: In the original code, self.proj was (model_dim, rank). 
+        # nn.Linear weights are (rank, model_dim).
+        self.proj_layer = nn.Linear(self.model_dim, self.probe_rank, bias=False)
+
+        # APPLY THE HARD CONSTRAINT:
+        # This forces the matrix to have orthonormal rows (if rank < dim).
+        # It ensures the transformation is a pure rotation/projection (Isometry).
+        parametrizations.orthogonal(
+            self.proj_layer, 
+            "weight"
+        )
+        self.to(args['device'])
+
+    def forward(self, batch):
+        """ Computes all n^2 pairs of distances after ISOMETRIC projection. """
+        
+        # Use the parametrized layer instead of raw matmul
+        transformed = self.proj_layer(batch)
+        
+        _, seqlen, _ = transformed.size()
+        transformed = transformed.unsqueeze(2)
+        transformed = transformed.expand(-1, -1, seqlen, -1)
+        transposed = transformed.transpose(1,2)
+        
+        diffs = transformed - transposed
+        squared_diffs = diffs.pow(2)
+        squared_distances = torch.sum(squared_diffs, -1)
+        
+        return squared_distances
+
+
+class IsometricOneWordPSDProbe(Probe):
+    """ Computes squared L2 norm (Depth) after projection by an ORTHOGONAL matrix. """
+
+    def __init__(self, args):
+        print('Constructing IsometricOneWordPSDProbe')
+        super(IsometricOneWordPSDProbe, self).__init__()
+        self.args = args
+        self.probe_rank = args['probe']['maximum_rank']
+        self.model_dim = args['model']['hidden_dim']
+
+        self.proj_layer = nn.Linear(self.model_dim, self.probe_rank, bias=False)
+
+        # Apply Hard Orthogonal Constraint
+        parametrizations.orthogonal(
+            self.proj_layer, 
+            "weight"
+        )
+        self.to(args['device'])
+
+    def forward(self, batch):
+        """ Computes all n depths after ISOMETRIC projection. """
+        
+        # Use the parametrized layer
+        transformed = self.proj_layer(batch)
+        
+        batchlen, seqlen, rank = transformed.size()
+        norms = torch.bmm(transformed.view(batchlen* seqlen, 1, rank),
+            transformed.view(batchlen* seqlen, rank, 1))
+        norms = norms.view(batchlen, seqlen)
+        return norms

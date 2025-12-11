@@ -3,5 +3,8 @@ seaborn
 scipy
 PyYAML
 numpy
-h5py
 tqdm
+matplotlib
+h5py
+torch
+transformers==4.46.3

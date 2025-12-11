@@ -1,0 +1,7 @@
+synt/
+*.hdf5
+*.sh
+bert-base-multilingual-cased
+runs/
+__pycache__
+example/

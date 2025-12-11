@@ -10,9 +10,15 @@ MODEL_NAME = "bert-base-multilingual-cased"
 
 def get_word_embeddings(text_file, hdf5_file):
     print(f"Cargando modelo: {MODEL_NAME}...")
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    tokenizer = AutoTokenizer.from_pretrained(
+        MODEL_NAME, 
+        fix_mistral_regex=True
+        )
     model = AutoModel.from_pretrained(MODEL_NAME)
     model.eval()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
 
     print(f"Procesando {text_file} -> {hdf5_file}")
     
@@ -23,18 +29,21 @@ def get_word_embeddings(text_file, hdf5_file):
         for idx, sentence in tqdm(enumerate(lines), total=len(lines)):
             # Tokenizar preservando el mapeo a palabras originales
             inputs = tokenizer(sentence.split(), is_split_into_words=True, return_tensors="pt", return_offsets_mapping=True)
-            
+            offset_mapping = inputs["offset_mapping"]
+            inputs = {k: v.to(device) for k, v in inputs.items() if k != "offset_mapping"}
             with torch.no_grad():
-                outputs = model(**{k: v for k, v in inputs.items() if k != 'offset_mapping'})
+                outputs = model(**inputs)
             
             # Obtenemos hidden states de la última capa (shape: 1, seq_len, 768)
             # Ojo: El paper original a veces usa todas las capas. Aquí usaremos la última por simplicidad
             # Si quieres todas, usa outputs.hidden_states (si configuras output_hidden_states=True)
-            hidden_states = outputs.last_hidden_state[0].numpy() # (seq_len, 768)
+            hidden_states = outputs.last_hidden_state[0].cpu().numpy() # (seq_len, 768)
             
             # Alinear subwords a palabras originales
-            offset_mapping = inputs['offset_mapping'][0].numpy()
-            word_ids = inputs.word_ids()
+            word_ids = tokenizer(
+                sentence.split(),
+                is_split_into_words=True
+            ).word_ids()
             
             merged_embeddings = []
             current_word_vectors = []

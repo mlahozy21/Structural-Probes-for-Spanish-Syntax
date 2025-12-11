@@ -7,14 +7,7 @@ import yaml
 from tqdm import tqdm
 import torch
 import numpy as np
-
-import data
-import model
-import probe
-import regimen
-import reporter
-import task
-import loss
+from scripts import model, probe, regimen, reporter, task, loss, data
 
 def choose_task_classes(args):
   """Chooses which task class to use based on config.
@@ -71,13 +64,23 @@ def choose_probe_class(args):
   Returns:
     A probe_class to be instantiated.
   """
+  # Check if the 'isometric' flag is set to True in the config
+  is_isometric = args['probe'].get('isometric', False)
+
   if args['probe']['task_signature'] == 'word':
-    if args['probe']['psd_parameters']:
+    if is_isometric:
+        # Use the new class we added to probe.py
+        return probe.IsometricOneWordPSDProbe
+    elif args['probe']['psd_parameters']:
       return probe.OneWordPSDProbe
     else:
       return probe.OneWordNonPSDProbe
+      
   elif args['probe']['task_signature'] == 'word_pair':
-    if args['probe']['psd_parameters']:
+    if is_isometric:
+        # Use the new class we added to probe.py
+        return probe.IsometricTwoWordPSDProbe
+    elif args['probe']['psd_parameters']:
       return probe.TwoWordPSDProbe
     else:
       return probe.TwoWordNonPSDProbe
@@ -186,7 +189,7 @@ def setup_new_experiment_dir(args, yaml_args, reuse_results_path):
   """Constructs a directory in which results and params will be stored.
 
   If reuse_results_path is not None, then it is reused; no new
-  directory is constrcted.
+  directory is constructed.
   
   Args:
     args: the command-line arguments:
@@ -196,6 +199,13 @@ def setup_new_experiment_dir(args, yaml_args, reuse_results_path):
   now = datetime.now()
   date_suffix = '-'.join((str(x) for x in [now.year, now.month, now.day, now.hour, now.minute, now.second, now.microsecond]))
   model_suffix = '-'.join((yaml_args['model']['model_type'], yaml_args['probe']['task_name']))
+
+  # --- CHANGE START: Redirect to 'results/iso' if isometric ---
+  if yaml_args['probe'].get('isometric', False):
+      tqdm.write('Isometric probe detected. Saving results to subdirectory "iso".')
+      yaml_args['reporting']['root'] = os.path.join(yaml_args['reporting']['root'], 'iso')
+  # --- CHANGE END ---
+
   if reuse_results_path:
     new_root = reuse_results_path
     tqdm.write('Reusing old results directory at {}'.format(new_root))
@@ -206,6 +216,7 @@ def setup_new_experiment_dir(args, yaml_args, reuse_results_path):
   else:
     new_root = os.path.join(yaml_args['reporting']['root'], model_suffix + '-' + date_suffix +'/' )
     tqdm.write('Constructing new results directory at {}'.format(new_root))
+  
   yaml_args['reporting']['root'] = new_root
   os.makedirs(new_root, exist_ok=True)
   try:
@@ -213,7 +224,6 @@ def setup_new_experiment_dir(args, yaml_args, reuse_results_path):
       os.path.basename(args.experiment_config)))
   except shutil.SameFileError:
     tqdm.write('Note, the config being used is the same as that already present in the results dir')
-
 
 if __name__ == '__main__':
   argp = ArgumentParser()

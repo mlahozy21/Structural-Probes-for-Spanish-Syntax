@@ -37,6 +37,7 @@ probe:
   psd_parameters: True
   diagonal: False
   params_path: predictor.params
+  isometric: True
 
 probe_training:
   epochs: 10

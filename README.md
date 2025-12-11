@@ -46,7 +46,7 @@ Install the necessary Python packages:
 ```
 Bash
 
-pip install torch transformers h5py tqdm matplotlib numpy pyyaml
+pip -r install requirements.txt
 ```
 ### 2. Dataset Download
 Download the Universal Dependencies Spanish AnCora corpus (v2.x) from the official repository: UD_Spanish-AnCora GitHub.

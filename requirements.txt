@@ -1,10 +1,12 @@
-Cython
-seaborn
-scipy
-PyYAML
-numpy
-tqdm
-matplotlib
-h5py
-torch
-transformers==4.46.3
+# Tested with Python 3.10, 3.11, 3.12, 3.13.
+# torch is not pinned strictly because the right wheel depends on the
+# user's CUDA / CPU setup; install it separately if needed.
+torch>=2.0
+transformers>=4.46
+h5py>=3.8
+numpy>=1.24
+scipy>=1.10
+PyYAML>=6.0
+tqdm>=4.65
+matplotlib>=3.7
+seaborn>=0.12

@@ -1,160 +1,243 @@
-# Structural Probes for Spanish Syntax: mBERT & AnCora
+# Structural Probes for Spanish Syntax: mBERT & UD AnCora
 
-This repository contains an experimental replication of the paper **"A Structural Probe for Finding Syntax in Word Representations"** (Hewitt & Manning, 2019), adapted specifically for the **Spanish language**.
+This repository contains an experimental replication and extension of
+**"A Structural Probe for Finding Syntax in Word Representations"**
+(Hewitt & Manning, NAACL 2019), adapted to **Spanish** using the
+**UD_Spanish-AnCora** treebank and **multilingual BERT** (mBERT) as the
+encoder.
 
-The primary objective is to investigate whether multilingual language models (such as **mBERT**) encode Spanish syntactic structure (dependency trees) within their vector geometry, without having been explicitly trained with syntactic supervision.
+## What we investigate
 
-Additionally, we extend the original methodology by introducing an **Isometric Probe**. This variant constrains the probe to be a rigid rotation (orthogonal transformation), testing the hypothesis that syntax trees exist as "ready-to-use" geometric shapes in the embedding space, rather than requiring distortion (non-uniform scaling) to be revealed.
+1. Does mBERT encode Spanish dependency syntax in the geometry of its
+   contextual word representations, despite never being trained with any
+   syntactic supervision?
+2. Across which mBERT layers is this syntactic signal strongest?
+3. Is the syntactic structure embedded as a **rigid geometric shape** in
+   the representation space, or does it require non-uniform scaling
+   (anisotropic distortion) to be exposed?
 
-## 📊 Results
+To address (3) we extend the original methodology with an **Isometric
+Probe**: a structural probe whose projection matrix is constrained to be
+orthogonal (`B^T B = I`). If the syntax tree exists as a "ready-to-use"
+shape in the embedding space, this constrained probe should match the
+unconstrained linear probe; if instead the probe needs to stretch
+specific directions, the orthogonal probe will underperform.
 
-We trained two types of probes for the Parse Distance task using embeddings from the 12th layer of `bert-base-multilingual-cased`:
-1. Linear Probe (Baseline): The standard probe allowing arbitrary linear transformation (scaling + rotation).
-2. Isometric Probe (New): A constrained probe allowing only rotation and reflection ($B^T B = I$).
+## Dataset
 
-Despite initial alignment challenges regarding Spanish contractions, our results show a strong Spearman correlation, suggesting that mBERT captures significant syntactic information for the Spanish language.
+* **UD_Spanish-AnCora**, distributed via Universal Dependencies under
+  the **CC BY 4.0** license. Newswire text, originally annotated in the
+  AnCora project (Universitat de Barcelona; Taulé et al., 2008),
+  converted to dependencies for CoNLL-2009 and then to Universal
+  Dependencies.
+* GitHub: <https://github.com/UniversalDependencies/UD_Spanish-AnCora>
+* Splits used here:
 
-## Experimental Setup
-* **Model:** mBERT (`bert-base-multilingual-cased`), frozen weights.
-* **Layer:** Last hidden layer (Layer 12).
-* **Task:** Parse Distance (predicting syntactic distance between word pairs).
-* **Training:** 30 epochs, L1 Loss, Batch size 32.
+  | split | sentences | conllu lines |
+  |-------|----------:|-------------:|
+  | train | 14 287    | 529 439      |
+  | dev   | 1 654     |  62 444      |
+  | test  | 1 721     |  62 841      |
 
-We evaluated the probe using UUAS (Undirected Unlabeled Attachment Score) and Spearman Correlation.
-| Probe Type | Constraint | Spearman $\rho$ | UUAS (accuracy) | Interpretation |
-| :--- | :---: | :--- | :--- | :--- |
-| **Linear** | **None** | **0.735** | **0.504** | **Latent Structure Found.** Confirms that mBERT captures the geometric distance between syntactically related words in Spanish. The probe successfully recovers syntax by re-weighting dimensions. Outperforms the random baseline (0.44), demonstrating latent structural learning.|
-| **Isometric** | **Orthogonal (Orthogonal ($B^TB=I$))** | **0.658** | **0.375** | **Geometric Mismatch.** The significant drop (-25%) indicates the raw embedding geometry is too distorted to represent trees directly.|
+  The exact UD release should be recorded in `data/es_ancora/UD_VERSION`
+  (we have not pinned a release yet — please add the version reported in
+  AnCora's own README when downloading).
 
-## Geometric Stability Analysis
+## Encoder
 
-The performance gap between the Linear and Isometric probes suggests that the embedding space suffers from anisotropy (the "representation cone" problem).
+* `bert-base-multilingual-cased` from HuggingFace, frozen.
+* 12 transformer blocks + 1 input embedding layer = 13 hidden states
+  per token.
+* Sub-word aggregation: configurable (`mean` or `first`). Hewitt &
+  Manning (2019) use `first`; we use `mean` by default but expose
+  `--aggregation first` in `generate_embeddings.py` for direct
+  comparability.
 
-We analyzed the transformation matrix of the successful Linear Probe and found a Condition Number ($\kappa$) of 12.30.
-* **Implication:** mBERT suppresses Spanish syntactic dimensions by a factor of ~12 relative to dominant semantic/frequency dimensions.
-* **Conclusion:** Spanish syntax is present in mBERT, but it is not "geometric" in the Euclidean sense. It exists as extractable features that must be amplified (stretched) by the probe to be used.
+## Repository layout
 
-> **Note:** The discrepancy in UUAS compared to the original English paper is attributed to mBERT sharing capacity across 104 languages and the richer morphology of Spanish.
-
-
-## 🛠️ Modifications & Engineering
-
-To adapt the original 2019 codebase to a modern environment and the specific linguistic features of Spanish, the following key implementations were made:
-
-### 1. Data Alignment (Critical Fix)
-Spanish contains contractions (e.g., *del* = *de* + *el*, *al* = *a* + *el*) that are split in the Universal Dependencies (CoNLL-U) format using range indices (e.g., `1-2`). This caused a severe misalignment between the tokenized BERT embeddings and the gold-standard labels. 
-* **Solution:** We implemented a filtering strategy in `conllu_to_text.py` and `data.py` to strictly ignore range indices, ensuring a 1-to-1 mapping between the embedding subwords and the syntactic labels.
-
-### 2. Mathematical Optimization
-The original distance calculation algorithm in `task.py` was iterative and prone to infinite loops when encountering cyclic dependencies in the annotation data.
-* **Solution:** The algorithm was rewritten using a **vectorized Floyd-Warshall algorithm** with NumPy. This ensures robustness against cycles and reduced the pre-computation time from minutes to seconds.
-
-### 3. Library Migration
-* **Transformers:** Replaced the obsolete `pytorch-pretrained-bert` with the modern HuggingFace `transformers` library.
-* **Windows/UTF-8:** Enforced `utf-8` encoding across all file I/O operations to correctly handle Spanish accents and special characters on Windows systems.
-
-
-## 🚀 Reproduction Steps
-### 1. Requirements
-Install the necessary Python packages:
 ```
-Bash
-
-pip -r install requirements.txt
-```
-### 2. Dataset Download
-Download the Universal Dependencies Spanish AnCora corpus (v2.x) from the official repository: UD_Spanish-AnCora GitHub.
-
-Place the .conllu files in the data/es_ancora/ folder:
-
-es_ancora-ud-train.conllu
-
-es_ancora-ud-dev.conllu
-
-es_ancora-ud-test.conllu
-
-### 3. Data Cleaning & Alignment
-Run the custom cleaning script to extract raw text and remove contraction ranges (fixing the alignment issue):
-```
-Bash
-
-python -m scripts.conllu_to_text data/es_ancora/es_ancora-ud-train.conllu data/es_ancora/es_ancora-ud-train.txt
-python -m scripts.conllu_to_text data/es_ancora/es_ancora-ud-dev.conllu data/es_ancora/es_ancora-ud-dev.txt
-python -m scripts.conllu_to_text data/es_ancora/es_ancora-ud-test.conllu data/es_ancora/es_ancora-ud-test.txt
-```
-### 4. Embedding Generation
-Pre-compute the mBERT embeddings. This freezes the model layers into HDF5 files for faster training.
-```
-Bash
-
-python -m scripts.generate_embeddings data/es_ancora/es_ancora-ud-train.txt data/es_ancora/es_ancora-ud-train.hdf5
-python -m scripts.generate_embeddings data/es_ancora/es_ancora-ud-dev.txt data/es_ancora/es_ancora-ud-dev.hdf5
-python -m scripts.generate_embeddings data/es_ancora/es_ancora-ud-test.txt data/es_ancora/es_ancora-ud-test.hdf5
-```
-### 5. Running the Experiment
-Train the structural probe using the configuration file:
-```
-Bash
-
-python -m scripts/run_experiment es_ancora.yaml
+scripts/
+  conllu_to_text.py        # CoNLL-U -> whitespace-tokenized text, dropping contraction range rows
+  generate_embeddings.py   # mBERT contextual embeddings (all 13 layers) -> HDF5
+  data.py                  # PyTorch DataLoaders; auto-detects single/multi-layer HDF5
+  task.py                  # ParseDistanceTask, ParseDepthTask
+  probe.py                 # Linear and Isometric (orthogonal) PSD probes
+  loss.py                  # L1 loss for distance and depth
+  regimen.py               # train/predict loop with early stopping
+  reporter.py              # Spearman, UUAS, MST visualization, tikz dump
+  run_experiment.py        # single-seed, single-layer experiment driver
+  run_multiseed.py         # repeat one config across N seeds and aggregate
+  run_layer_sweep.py       # train one probe per layer (curve over depth)
+  calc_condition_number.py # SVD-based diagnostic of probe geometry
+data/es_ancora/            # CoNLL-U files and derived .txt / .hdf5
+es_ancora.yaml             # default experiment configuration
+results/                   # outputs (created at run time)
+references.bib             # bib entries for the relevant literature
 ```
 
-**To run the Isometric Probe:** Update your `es_ancora.yaml` configuration file to include the `isometric` flag. This will trigger the hard orthogonality constraint on the probe:
+## Methodological choices and known caveats
 
-```yaml
-probe:
-  task_signature: word_pair
-  task_name: parse-distance
-  maximum_rank: 768
-  psd_parameters: True
-  diagonal: False
-  params_path: predictor.params
-  isometric: True  # <--- Set to True for Isometric Probe
+### Punctuation filtering for UUAS
+We follow Hewitt & Manning (2019) in excluding punctuation tokens from the
+minimum spanning tree before computing UUAS. We use the **UPOS** tag
+`PUNCT` (Universal Dependencies) so the same code works for Spanish,
+English, and any other UD treebank.
+
+> Earlier versions of this codebase filtered XPOS using PTB-style English
+> tags (`","`, `"."`, etc.), which silently included Spanish punctuation
+> in the UUAS computation. UUAS numbers reported before this fix are not
+> directly comparable to the literature.
+
+### Sub-word aggregation
+mBERT uses WordPiece sub-words. For each whitespace-separated word, the
+default behaviour is to **average** the contextual vectors of all its
+sub-pieces. The original Hewitt-Manning code instead takes only the
+**first** piece. Switch with `--aggregation first` in
+`generate_embeddings.py`.
+
+### Contractions and enhanced empty nodes
+AnCora UD has two kinds of CoNLL-U rows that should NOT be fed to mBERT
+as words:
+
+* **Contraction range rows** (`13-14 al`, `60-61 celebrarlos`). The
+  individual sub-word rows (13 `a`, 14 `el`) carry the real surface
+  forms; the range row is just metadata.
+* **Enhanced empty nodes** (`8.1 _ _ PRON`). These represent
+  syntactically projected but surface-absent tokens — typically dropped
+  Spanish subjects (`él/ella`). Their FORM is `_`. AnCora has 6499 such
+  rows in train, 780 in dev, 833 in test.
+
+Both kinds of rows are filtered with the same predicate (`ID is not a
+pure integer`) in `conllu_to_text.py` and again in `data.py` for
+defence-in-depth. The text emitted is `... de el Banco Central .`
+rather than `... del Banco Central .`, and empty nodes never appear at
+all.
+
+> Earlier versions of `conllu_to_text.py` only filtered range rows, so
+> empty-node FORMs (literal `_`) were emitted as words and mBERT was
+> producing embeddings for them, with the probe then learning syntactic
+> geometry over fake tokens. Any number reported before this fix is
+> contaminated by ~5% spurious tokens (proportion of empty nodes in
+> AnCora) and is not directly comparable to numbers from the corrected
+> pipeline.
+
+### Tree distance computation
+Tree distances are computed exactly with Floyd-Warshall on the undirected
+adjacency matrix of the dependency tree. Disconnected components in the
+gold annotation (data quality issues) are masked with a large finite
+value and a `warnings.warn` is emitted so they can be inspected.
+
+### Layer choice
+mBERT has 13 hidden states (input embeddings + 12 transformer layers).
+Hewitt & Manning (2019) report that English BERT's syntactic information
+peaks around layer 7–8. We default the YAML to `model_layer: 7` and
+recommend using `scripts/run_layer_sweep.py` to plot the full curve when
+running new experiments.
+
+## Reproduction
+
+### 1. Install
+```
+pip install -r requirements.txt
 ```
 
-## 📈 Visualization
-Upon completion, results are saved in example/results/es_ancora. You will find:
+### 2. Download UD AnCora
+```
+git clone https://github.com/UniversalDependencies/UD_Spanish-AnCora.git
+cp UD_Spanish-AnCora/es_ancora-ud-{train,dev,test}.conllu data/es_ancora/
+```
 
-dev.spearmanr: Quantitative correlation metrics.
+### 3. Pre-process (drop contraction range rows)
+```
+for split in train dev test; do
+  python -m scripts.conllu_to_text \
+    data/es_ancora/es_ancora-ud-${split}.conllu \
+    data/es_ancora/es_ancora-ud-${split}.txt
+done
+```
 
-*.png (Heatmaps): Visual comparison of distance matrices (Gold vs. Predicted).
+### 4. Generate embeddings (all 13 layers)
+```
+for split in train dev test; do
+  python -m scripts.generate_embeddings \
+    data/es_ancora/es_ancora-ud-${split}.txt \
+    data/es_ancora/es_ancora-ud-${split}.hdf5 \
+    --layers all --aggregation mean
+done
+```
+Add `--random-init` to produce embeddings from a randomly initialised
+mBERT (control baseline).
 
-*.tikz: LaTeX code to generate vector graphics of the reconstructed syntactic trees.
+### 5. Train and report
+Single seed, single layer (as configured in `es_ancora.yaml`):
+```
+python -m scripts.run_experiment es_ancora.yaml --seed 0
+```
+Layer sweep (one probe per layer):
+```
+python -m scripts.run_layer_sweep es_ancora.yaml --layers 0 1 2 3 4 5 6 7 8 9 10 11 12
+```
+Multi-seed for a fixed config:
+```
+python -m scripts.run_multiseed es_ancora.yaml --seeds 0 1 2 3 4
+```
+Set `probe.isometric: true` in the YAML to switch to the orthogonal probe,
+and `reporting.evaluate_test: true` once you are ready to commit to a
+final number on the held-out test set.
 
-## 📄 References
-If you use this code or methodology, please cite the original paper and the dataset:
+### 6. Geometric diagnostic
+```
+python -m scripts.calc_condition_number results/es_ancora/.../predictor.params
+```
+For the linear probe this reports the condition number κ of the
+projection. For the isometric probe κ should be ≈ 1.0 by construction;
+the script will warn if it isn't.
 
+## Results
 
-@inproceedings{hewitt2019structural,
-  title={A Structural Probe for Finding Syntax in Word Representations},
-  author={Hewitt, John and Manning, Christopher D},
-  booktitle={North American Chapter of the Association for Computational Linguistics (NAACL)},
-  year={2019}
-}
+> **Status: pending re-run.** The numbers previously reported in this
+> README were computed with (a) layer 12 only, (b) the buggy English
+> punctuation filter, and (c) `maximum_rank: 128` (not 768 as previously
+> stated), single seed. After the fixes in this codebase the numbers
+> need to be regenerated. The runbook in `RUNBOOK.md` lists the
+> experiments to run.
 
-@inproceedings{taule2008ancora,
-  title={AnCora: Multilevel Annotated Corpora for Catalan and Spanish},
-  author={Taul{\'e}, Mariona and Mart{\'i}, Maria Ant{\`o}nia and Recasens, Marta},
-  booktitle={LREC},
-  year={2008}
-}
+When refreshed, the table will report, for each (probe, layer) pair:
 
+* dev / test Spearman ρ averaged over sentence lengths 5–50
+* dev / test UUAS (Undirected Unlabeled Attachment Score)
+* mean ± std across ≥ 3 seeds
+* condition number κ of the projection matrix
 
+A second table will report the same metrics for the **random-init mBERT
+baseline** (control: how much does the structural probe learn from
+random representations?).
 
+## Limitations and open work
 
+* **No control task** in the strict sense of Hewitt & Liang (2019).
+  The random-init baseline gives a representation-level control;
+  implementing a word-type-level control task with selectivity would
+  strengthen the claims. Tracked but not implemented.
+* **Single encoder.** Comparing mBERT to BETO, RoBERTa-bne, and XLM-R
+  would test the "shared multilingual capacity hurts Spanish syntax"
+  hypothesis seriously; this is left as future work.
+* **Only the parse-distance probe is documented end-to-end.** The
+  `parse-depth` task is implemented but not the focus of this study.
+* **CPU is enough to run a single seed at a single layer in a few
+  hours.** A full layer sweep × 5 seeds × 2 probes is ~130 runs; budget
+  GPU time for a serious sweep.
 
+## References
 
+See `references.bib` for full BibTeX. Key references:
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+* Hewitt, J., & Manning, C. D. (2019). A Structural Probe for Finding
+  Syntax in Word Representations. *NAACL*. <https://aclanthology.org/N19-1419/>
+* Hewitt, J., & Liang, P. (2019). Designing and Interpreting Probes
+  with Control Tasks. *EMNLP*. <https://aclanthology.org/D19-1275/>
+* Chi, E. A., Hewitt, J., & Manning, C. D. (2020). Finding Universal
+  Grammatical Relations in Multilingual BERT. *ACL*.
+* Taulé, M., Martí, M. A., & Recasens, M. (2008). AnCora: Multilevel
+  Annotated Corpora for Catalan and Spanish. *LREC*.
+* UD_Spanish-AnCora: <https://universaldependencies.org/treebanks/es_ancora/index.html>

@@ -1,7 +1,31 @@
+# Internal / assistant notes (not part of the public project)
+CLAUDE.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
 synt/
+
+# Models / embeddings / runs (large, regenerated)
 *.hdf5
-*.sh
-bert-base-multilingual-cased
+bert-base-multilingual-cased/
 runs/
-__pycache__
 example/
+*.sh
+
+# LaTeX build artifacts (only the PDF is versioned)
+report/*.aux
+report/*.log
+report/*.out
+report/*.blg
+report/*.bbl
+report/*.fls
+report/*.fdb_latexmk
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

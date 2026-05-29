@@ -1,23 +1,33 @@
+# Configuration for the Spanish AnCora structural probe experiments.
+#
+# Re-runnable end-to-end with:
+#   python -m scripts.conllu_to_text  data/es_ancora/es_ancora-ud-{split}.conllu data/es_ancora/es_ancora-ud-{split}.txt
+#   python -m scripts.generate_embeddings data/es_ancora/es_ancora-ud-{split}.txt data/es_ancora/es_ancora-ud-{split}.hdf5
+#   python -m scripts.run_experiment es_ancora.yaml --seed 0
+
 dataset:
+  # Field names used to build the Observation namedtuple. Order MUST match
+  # the columns in the CoNLL-U file (10 cols) plus a trailing 'embeddings'
+  # slot that gets populated at load time.
   observation_fieldnames:
-     - index
-     - sentence
-     - lemma
-     - upos
-     - xpos_sentence
-     - feats
-     - head_indices
-     - deprel
-     - deps
-     - misc
-     - embeddings  # <--- IMPORTANTE: Esta línea arregla el error de "11 vs 12 arguments"
+    - index
+    - sentence
+    - lemma
+    - upos              # universal POS (used for punctuation filtering)
+    - xpos_sentence     # treebank-specific POS (Spanish AnCora tags)
+    - feats
+    - head_indices
+    - deprel
+    - deps
+    - misc
+    - embeddings
   corpus:
     root: data/es_ancora/
     train_path: es_ancora-ud-train.conllu
     dev_path: es_ancora-ud-dev.conllu
     test_path: es_ancora-ud-test.conllu
   embeddings:
-    type: token 
+    type: token
     root: data/es_ancora/
     train_path: es_ancora-ud-train.hdf5
     dev_path: es_ancora-ud-dev.hdf5
@@ -25,26 +35,30 @@ dataset:
   batch_size: 32
 
 model:
-  model_type: BERT-disk   # <--- ESTO es lo que te falta ahora y causa el KeyError
-  model_layer: 0
+  model_type: BERT-disk
+  # Index of the mBERT layer to probe. With the multi-layer HDF5 produced
+  # by the refactored generate_embeddings.py, valid values are 0..12.
+  # Hewitt & Manning (2019) found that syntactic information peaks around
+  # layers 7-8 in BERT-base / mBERT-base.
+  model_layer: 7
   hidden_dim: 768
-  use_disk: True
+  use_disk: true
 
 probe:
-  task_signature: word_pair
-  task_name: parse-distance
-  maximum_rank: 128
-  psd_parameters: True
-  diagonal: False
+  task_signature: word_pair        # 'word' for depth, 'word_pair' for distance
+  task_name: parse-distance        # 'parse-distance' or 'parse-depth'
+  maximum_rank: 128                # rank of the projection matrix B
+  psd_parameters: true
+  diagonal: false
   params_path: predictor.params
-  isometric: False
+  isometric: false                 # set true for the orthogonal-constrained probe
 
 probe_training:
-  epochs: 10
+  epochs: 30
   loss: L1
 
 reporting:
-  root: example/results/es_ancora
+  root: results/es_ancora
   observation_paths:
     train_path: train.observations
     dev_path: dev.observations
@@ -57,3 +71,7 @@ reporting:
     - spearmanr
     - image_examples
     - uuas
+  # If true, also evaluate on the held-out test set after training.
+  # Default: false (test should only be touched when reporting final
+  # numbers in a paper).
+  evaluate_test: false

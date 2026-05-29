@@ -190,7 +190,12 @@ class WordPairReporter(Reporter):
           prediction_batch, label_batch,
           length_batch, observation_batch):
         words = observation.sentence
-        poses = observation.xpos_sentence
+        # Use UPOS for punctuation filtering. UPOS=='PUNCT' is the
+        # universal POS tag for punctuation in UD treebanks (works for
+        # Spanish AnCora, English EWT, etc.). Previously this code
+        # filtered XPOS using PTB-style English tags, which silently
+        # included Spanish punctuation in the UUAS computation.
+        poses = observation.upos
         length = int(length)
         assert length == len(observation.sentence)
         prediction = prediction[:length,:length]
@@ -306,7 +311,8 @@ class WordReporter(Reporter):
         label = list(label[:length].cpu())
         prediction = prediction.data[:length]
         words = observation.sentence
-        poses = observation.xpos_sentence
+        # Use UPOS=='PUNCT' (UD universal tag) for punctuation filtering.
+        poses = observation.upos
 
         correct_root_predictions += label.index(0) == get_nopunct_argmin(prediction, words, poses)
         total_sents += 1
@@ -378,6 +384,15 @@ class UnionFind:
     return i_parent
 
 
+# Universal POS tag for punctuation in UD treebanks. Using UPOS instead
+# of treebank-specific XPOS makes this language-agnostic.
+PUNCT_UPOS = {'PUNCT'}
+
+
+def is_punct(pos):
+  return pos in PUNCT_UPOS
+
+
 def prims_matrix_to_edges(matrix, words, poses):
   '''
   Constructs a minimum spanning tree from the pairwise weights in matrix;
@@ -389,9 +404,9 @@ def prims_matrix_to_edges(matrix, words, poses):
   uf = UnionFind(len(matrix))
   for i_index, line in enumerate(matrix):
     for j_index, dist in enumerate(line):
-      if poses[i_index] in ["''", ",", ".", ":", "``", "-LRB-", "-RRB-"]:
+      if is_punct(poses[i_index]):
         continue
-      if poses[j_index] in ["''", ",", ".", ":", "``", "-LRB-", "-RRB-"]:
+      if is_punct(poses[j_index]):
         continue
       pairs_to_distances[(i_index, j_index)] = dist
   edges = []
@@ -405,11 +420,10 @@ def get_nopunct_argmin(prediction, words, poses):
   '''
   Gets the argmin of predictions, but filters out all punctuation-POS-tagged words
   '''
-  puncts = ["''", ",", ".", ":", "``", "-LRB-", "-RRB-"]
   original_argmin = np.argmin(prediction)
   for i in range(len(words)):
     argmin = np.argmin(prediction)
-    if poses[argmin] not in puncts:
+    if not is_punct(poses[argmin]):
       return argmin
     else:
       prediction[argmin] = 9000

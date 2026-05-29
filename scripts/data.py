@@ -16,14 +16,11 @@ import h5py
 
 
 class SimpleDataset:
-  """Reads conllx files to provide PyTorch Dataloaders
+  """Reads conllx files to provide PyTorch Dataloaders.
 
   Reads the data from conllx files into namedtuple form to keep annotation
   information, and provides PyTorch dataloaders and padding/batch collation
   to provide access to train, dev, and test splits.
-
-  Attributes:
-    args: the global yaml-derived experiment config dictionary
   """
   def __init__(self, args, task, vocab={}):
     self.args = args
@@ -37,15 +34,6 @@ class SimpleDataset:
     self.test_dataset = ObservationIterator(self.test_obs, task)
 
   def read_from_disk(self):
-    '''Reads observations from conllx-formatted files
-    
-    as specified by the yaml arguments dictionary and 
-    optionally adds pre-constructed embeddings for them.
-
-    Returns:
-      A 3-tuple: (train, dev, test) where each element in the
-      tuple is a list of Observations for that split of the dataset. 
-    '''
     train_corpus_path = os.path.join(self.args['dataset']['corpus']['root'],
         self.args['dataset']['corpus']['train_path'])
     dev_corpus_path = os.path.join(self.args['dataset']['corpus']['root'],
@@ -68,29 +56,9 @@ class SimpleDataset:
     return train_observations, dev_observations, test_observations
 
   def get_observation_class(self, fieldnames):
-    '''Returns a namedtuple class for a single observation.
-
-    The namedtuple class is constructed to hold all language and annotation
-    information for a single sentence or document.
-
-    Args:
-      fieldnames: a list of strings corresponding to the information in each
-        row of the conllx file being read in. (The file should not have
-        explicit column headers though.)
-    Returns:
-      A namedtuple class; each observation in the dataset will be an instance
-      of this class.
-    '''
     return namedtuple('Observation', fieldnames)
 
   def generate_lines_for_sent(self, lines):
-    '''Yields batches of lines describing a sentence in conllx.
-
-    Args:
-      lines: Each line of a conllx file.
-    Yields:
-      a list of lines describing a single sentence in conllx.
-    '''
     buf = []
     for line in lines:
       if line.startswith('#'):
@@ -107,46 +75,28 @@ class SimpleDataset:
       yield buf
 
   def load_conll_dataset(self, filepath):
-    '''Reads in a conllx file; generates Observation objects
-    
-    For each sentence in a conllx file, generates a single Observation
-    object.
-
-    Args:
-      filepath: the filesystem path to the conll dataset
-  
-    Returns:
-      A list of Observations 
-    '''
     observations = []
     lines = (x for x in open(filepath, encoding='utf-8'))
     for buf in self.generate_lines_for_sent(lines):
       conllx_lines = []
       for line in buf:
         parts = line.strip().split('\t')
-        # --- CORRECCIÓN IMPRESCINDIBLE ---
-        # Si la primera columna tiene un guion (ej: "1-2"), es un rango de contracción.
-        # Lo saltamos para que no cuente como palabra extra y coincida con los embeddings.
-        if '-' in parts[0]:
-            continue
-        # ---------------------------------
+        # Skip CoNLL-U special rows: contraction ranges (e.g. "13-14")
+        # and enhanced empty nodes (e.g. "1.1"). Only proper word rows
+        # have integer IDs, which is what mBERT sees and what our gold
+        # labels reference.
+        if not parts[0].isdigit():
+          continue
         conllx_lines.append(parts)
-        
+
+      if not conllx_lines:
+        continue
       embeddings = [None for x in range(len(conllx_lines))]
       observation = self.observation_class(*zip(*conllx_lines), embeddings)
       observations.append(observation)
     return observations
 
   def add_embeddings_to_observations(self, observations, embeddings):
-    '''Adds pre-computed embeddings to Observations.
-
-    Args:
-      observations: A list of Observation objects composing a dataset.
-      embeddings: A list of pre-computed embeddings in the same order.
-
-    Returns:
-      A list of Observations with pre-computed embedding fields.
-    '''
     embedded_observations = []
     for observation, embedding in zip(observations, embeddings):
       embedded_observation = self.observation_class(*(observation[:-1]), embedding)
@@ -154,27 +104,7 @@ class SimpleDataset:
     return embedded_observations
 
   def generate_token_embeddings_from_hdf5(self, args, observations, filepath, layer_index):
-    '''Reads pre-computed embeddings from ELMo-like hdf5-formatted file.
-
-    Sentences should be given integer keys corresponding to their order
-    in the original file.
-    Embeddings should be of the form (layer_count, sent_length, feature_count)
-
-    Args:
-      args: the global yaml-derived experiment config dictionary.
-      observations: A list of Observations composing a dataset.
-      filepath: The filepath of a hdf5 file containing embeddings.
-      layer_index: The index corresponding to the layer of representation
-          to be used. (e.g., 0, 1, 2 for ELMo0, ELMo1, ELMo2.)
-    
-    Returns:
-      A list of numpy matrices; one for each observation.
-
-    Raises:
-      AssertionError: sent_length of embedding was not the length of the
-        corresponding sentence in the dataset.
-    '''
-    hf = h5py.File(filepath, 'r') 
+    hf = h5py.File(filepath, 'r')
     indices = filter(lambda x: x != 'sentence_to_index', list(hf.keys()))
     single_layer_features_list = []
     for index in sorted([int(x) for x in indices]):
@@ -186,17 +116,6 @@ class SimpleDataset:
     return single_layer_features_list
 
   def integerize_observations(self, observations):
-    '''Replaces strings in an Observation with integer Ids.
-    
-    The .sentence field of the Observation will have its strings
-    replaced with integer Ids from self.vocab. 
-
-    Args:
-      observations: A list of Observations describing a dataset
-
-    Returns:
-      A list of observations with integer-lists for sentence fields
-    '''
     new_observations = []
     if self.vocab == {}:
       raise ValueError("Cannot replace words with integer ids with an empty vocabulary "
@@ -207,60 +126,18 @@ class SimpleDataset:
     return new_observations
 
   def get_train_dataloader(self, shuffle=True, use_embeddings=True):
-    """Returns a PyTorch dataloader over the training dataset.
-
-    Args:
-      shuffle: shuffle the order of the dataset.
-      use_embeddings: ignored
-
-    Returns:
-      torch.DataLoader generating the training dataset (possibly shuffled)
-    """
     return DataLoader(self.train_dataset, batch_size=self.batch_size, collate_fn=self.custom_pad, shuffle=shuffle)
 
   def get_dev_dataloader(self, use_embeddings=True):
-    """Returns a PyTorch dataloader over the development dataset.
-
-    Args:
-      use_embeddings: ignored
-
-    Returns:
-      torch.DataLoader generating the development dataset
-    """
     return DataLoader(self.dev_dataset, batch_size=self.batch_size, collate_fn=self.custom_pad, shuffle=False)
 
   def get_test_dataloader(self, use_embeddings=True):
-    """Returns a PyTorch dataloader over the test dataset.
-
-    Args:
-      use_embeddings: ignored
-
-    Returns:
-      torch.DataLoader generating the test dataset
-    """
     return DataLoader(self.test_dataset, batch_size=self.batch_size, collate_fn=self.custom_pad, shuffle=False)
 
   def optionally_add_embeddings(self, observations, pretrained_embeddings_path):
-    """Does not add embeddings; see subclasses for implementations."""
     return observations
 
   def custom_pad(self, batch_observations):
-    '''Pads sequences with 0 and labels with -1; used as collate_fn of DataLoader.
-    
-    Loss functions will ignore -1 labels.
-    If labels are 1D, pads to the maximum sequence length.
-    If labels are 2D, pads all to (maxlen,maxlen).
-
-    Args:
-      batch_observations: A list of observations composing a batch
-    
-    Return:
-      A tuple of:
-          input batch, padded
-          label batch, padded
-          lengths-of-inputs batch, padded
-          Observation batch (not padded)
-    '''
     if self.use_disk_embeddings:
       seqs = [torch.tensor(x[0].embeddings, device=self.args['device']) for x in batch_observations]
     else:
@@ -282,45 +159,19 @@ class SimpleDataset:
     labels = torch.stack(labels)
     return seqs, labels, lengths, batch_observations
 
+
 class ELMoDataset(SimpleDataset):
-  """Dataloader for conllx files and pre-computed ELMo embeddings.
-
-  See SimpleDataset.
-  Assumes embeddings are aligned with tokens in conllx file.
-  Attributes:
-    args: the global yaml-derived experiment config dictionary
-  """
-
   def optionally_add_embeddings(self, observations, pretrained_embeddings_path):
-    """Adds pre-computed ELMo embeddings from disk to Observations."""
     layer_index = self.args['model']['model_layer']
     print('Loading ELMo Pretrained Embeddings from {}; using layer {}'.format(pretrained_embeddings_path, layer_index))
     embeddings = self.generate_token_embeddings_from_hdf5(self.args, observations, pretrained_embeddings_path, layer_index)
     observations = self.add_embeddings_to_observations(observations, embeddings)
     return observations
 
+
 class SubwordDataset(SimpleDataset):
-  """Dataloader for conllx files and pre-computed ELMo embeddings.
-
-  See SimpleDataset.
-  Assumes we have access to the subword tokenizer.
-  """
-
   @staticmethod
   def match_tokenized_to_untokenized(tokenized_sent, untokenized_sent):
-    '''Aligns tokenized and untokenized sentence given subwords "##" prefixed
-
-    Assuming that each subword token that does not start a new word is prefixed
-    by two hashes, "##", computes an alignment between the un-subword-tokenized
-    and subword-tokenized sentences.
-
-    Args:
-      tokenized_sent: a list of strings describing a subword-tokenized sentence
-      untokenized_sent: a list of strings describing a sentence, no subword tok.
-    Returns:
-      A dictionary of type {int: list(int)} mapping each untokenized sentence
-      index to a list of subword-tokenized sentence indices
-    '''
     mapping = defaultdict(list)
     untokenized_sent_index = 0
     tokenized_sent_index = 1
@@ -338,61 +189,89 @@ class SubwordDataset(SimpleDataset):
   def generate_subword_embeddings_from_hdf5(self, observations, filepath, elmo_layer, subword_tokenizer=None):
     raise NotImplementedError("Instead of making a SubwordDataset, make one of the implementing classes")
 
+
 class BERTDataset(SubwordDataset):
-  """Dataloader for conllx files and pre-computed BERT embeddings.
-
-  See SimpleDataset.
-  Attributes:
-    args: the global yaml-derived experiment config dictionary
-  """
-
   def generate_subword_embeddings_from_hdf5(self, observations, filepath, layer_index):
-    # VERSIÓN DE DIAGNÓSTICO (SIN TQDM)
-    print(f"Cargando embeddings desde {filepath}...")
-    hf = h5py.File(filepath, 'r')
-    indices = list(hf.keys())
-    single_layer_features_list = []
-    sorted_indices = sorted([int(x) for x in indices])
+    """Load per-sentence BERT embeddings from HDF5.
 
-    # Bucle manual con print cada 1000 oraciones
-    count = 0
-    for index in sorted_indices:
-      if count % 1000 == 0:
-          print(f"Procesando oración {count}...", flush=True)
-      
-      features = np.array(hf[str(index)])
-      single_layer_features_list.append(features)
-      count += 1
+    Supports two on-disk layouts:
+      * 3D (n_stored_layers, n_words, hidden_dim): produced by the
+        multi-layer generator. The HDF5 stores attrs['layer_indices']
+        recording which absolute mBERT layers are present along axis 0.
+        We translate the requested model.model_layer to the correct
+        slot. If the requested layer was not saved, we raise.
+      * 2D (n_words, hidden_dim): legacy single-layer dumps. The
+        layer_index argument is ignored with a warning if it's nonzero.
 
-    print("¡Carga completada!")
-    return single_layer_features_list
+    Layer 0 is the input embeddings; layers 1..L are transformer block
+    outputs (L=12 for mBERT-base).
+    """
+    print(f'Loading BERT embeddings from {filepath} (layer={layer_index})...')
+    out = []
+    with h5py.File(filepath, 'r') as hf:
+      stored_layers = list(hf.attrs.get('layer_indices', []))
+      if stored_layers:
+        if layer_index not in stored_layers:
+          raise ValueError(
+            f'model_layer={layer_index} was not saved in {filepath}. '
+            f'Stored layers: {stored_layers}. Re-run generate_embeddings '
+            f'with --layers all (or include this layer explicitly).')
+        slot = stored_layers.index(layer_index)
+      else:
+        slot = layer_index
+
+      sorted_indices = sorted(int(x) for x in hf.keys())
+      warned_legacy = False
+      for sent_idx in tqdm(sorted_indices, desc='[loading hdf5]'):
+        feats = np.array(hf[str(sent_idx)])
+        if feats.ndim == 3:
+          if not (0 <= slot < feats.shape[0]):
+            raise ValueError(
+              f'Slot {slot} (for layer={layer_index}) out of range; '
+              f'HDF5 has {feats.shape[0]} layers in {filepath}.')
+          out.append(feats[slot])
+        elif feats.ndim == 2:
+          if layer_index != 0 and not warned_legacy:
+            print(f'WARNING: legacy 2D HDF5 in {filepath}; '
+                  f'ignoring model_layer={layer_index} and using the '
+                  f'single stored layer.')
+            warned_legacy = True
+          out.append(feats)
+        else:
+          raise ValueError(
+            f'Unexpected embedding ndim={feats.ndim} for sentence '
+            f'{sent_idx} in {filepath}.')
+    return out
 
   def optionally_add_embeddings(self, observations, pretrained_embeddings_path):
-    """Adds pre-computed BERT embeddings from disk to Observations."""
     layer_index = self.args['model']['model_layer']
-    print('Loading BERT Pretrained Embeddings from {}; using layer {}'.format(pretrained_embeddings_path, layer_index))
-    embeddings = self.generate_subword_embeddings_from_hdf5(observations, pretrained_embeddings_path, layer_index)
+    embeddings = self.generate_subword_embeddings_from_hdf5(
+      observations, pretrained_embeddings_path, layer_index)
+    if len(embeddings) != len(observations):
+      raise ValueError(
+        f'Alignment mismatch: {len(observations)} observations from '
+        f'CoNLL-U vs {len(embeddings)} embedded sentences in '
+        f'{pretrained_embeddings_path}. Did you regenerate the .txt and '
+        f'.hdf5 from the same .conllu?')
+    for i, (obs, emb) in enumerate(zip(observations, embeddings)):
+      if emb.shape[0] != len(obs.sentence):
+        raise ValueError(
+          f'Sentence {i}: {len(obs.sentence)} CoNLL-U words but the '
+          f'embedding has {emb.shape[0]} rows. Most likely the text '
+          f'file was tokenized differently than the CoNLL-U FORM '
+          f'column, or mBERT truncated a long sentence.')
     observations = self.add_embeddings_to_observations(observations, embeddings)
     return observations
 
 
 class ObservationIterator(Dataset):
-  """ List Container for lists of Observations and labels for them.
-
-  Used as the iterator for a PyTorch dataloader.
-  """
+  """List Container for lists of Observations and labels for them."""
 
   def __init__(self, observations, task):
     self.observations = observations
     self.set_labels(observations, task)
 
   def set_labels(self, observations, task):
-    """ Constructs aand stores label for each observation.
-
-    Args:
-      observations: A list of observations describing a dataset
-      task: a Task object which takes Observations and constructs labels.
-    """
     self.labels = []
     for observation in tqdm(observations, desc='[computing labels]'):
       self.labels.append(task.labels(observation))
@@ -402,4 +281,3 @@ class ObservationIterator(Dataset):
 
   def __getitem__(self, idx):
     return self.observations[idx], self.labels[idx]
-

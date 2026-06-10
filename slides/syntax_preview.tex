@@ -1,0 +1,284 @@
+% =====================================================================
+%  PREVIEW : section "Qu'est-ce que la syntaxe ?" — style conférence
+%  Marcos Lahoz Yago — Orange Research, 13 mai 2026
+% =====================================================================
+\documentclass[aspectratio=169,11pt]{beamer}
+
+% ---------- Theme base ----------
+\usetheme{default}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+
+% ---------- Encoding & fonts ----------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, shapes.geometric, fit, backgrounds, calc}
+\usepackage{xcolor}
+\usepackage{xspace}
+
+% ---------- Color palette ----------
+\definecolor{accent}{RGB}{255, 121, 0}        % Orange
+\definecolor{darknavy}{RGB}{26, 43, 76}       % Body text
+\definecolor{midgray}{RGB}{120, 130, 140}     % Subtle accents
+\definecolor{lightgray}{RGB}{220, 225, 230}   % Backgrounds
+\definecolor{frozenblue}{RGB}{124, 163, 208}
+\definecolor{probegreen}{RGB}{123, 190, 123}
+
+% ---------- Beamer typography ----------
+\setbeamercolor{normal text}{fg=darknavy}
+\setbeamercolor{frametitle}{fg=darknavy, bg=}
+\setbeamercolor{title}{fg=darknavy}
+\setbeamercolor{subtitle}{fg=midgray}
+\setbeamercolor{author}{fg=midgray}
+\setbeamercolor{date}{fg=midgray}
+\setbeamercolor{institute}{fg=midgray}
+\setbeamercolor{structure}{fg=accent}
+\setbeamercolor{alerted text}{fg=accent}
+\setbeamercolor{itemize item}{fg=accent}
+\setbeamercolor{itemize subitem}{fg=accent}
+\setbeamercolor{block title}{fg=darknavy, bg=lightgray}
+\setbeamercolor{block body}{fg=darknavy, bg=lightgray!50}
+
+\setbeamerfont{frametitle}{family=\sffamily, series=\bfseries, size=\large}
+\setbeamerfont{title}{family=\sffamily, series=\bfseries, size=\LARGE}
+\setbeamerfont{subtitle}{family=\sffamily, series=\mdseries, size=\normalsize}
+\setbeamerfont{author}{family=\sffamily, size=\small}
+\setbeamerfont{institute}{family=\sffamily, size=\footnotesize}
+\setbeamerfont{date}{family=\sffamily, size=\footnotesize}
+
+% ---------- Frametitle: thin rule below ----------
+\setbeamertemplate{frametitle}{%
+  \nointerlineskip%
+  \vspace{0.5em}\hspace{0.6em}\insertframetitle\par%
+  \vspace{0.15em}\hspace{0.6em}\textcolor{midgray}{\rule{\dimexpr\paperwidth-1.2em\relax}{0.3pt}}%
+  \vspace{0.2em}%
+}
+
+% ---------- Footer: name + page ----------
+\setbeamertemplate{footline}{%
+  \leavevmode%
+  \hspace{0.7em}\textcolor{midgray}{\footnotesize Lahoz Yago \textemdash{} Orange Research, 13 mai 2026}\hfill%
+  \textcolor{midgray}{\footnotesize \insertframenumber\,/\,\inserttotalframenumber}\hspace{0.7em}%
+  \vspace{0.45em}%
+}
+
+\setbeamertemplate{itemize item}{\textcolor{accent}{\textbf{\textbullet}}}
+\setbeamertemplate{itemize subitem}{\textcolor{accent}{\textendash}}
+
+\newcommand{\mbert}{m\textsc{BERT}\xspace}
+\newcommand{\ancora}{UD\_Spanish-AnCora\xspace}
+
+% =====================================================================
+\title{La syntaxe espagnole se cache-t-elle dans m\textsc{BERT} ?}
+\subtitle{Sondes structurelles et extension isom\'etrique}
+\author{Marcos Lahoz Yago}
+\institute{Universit\'e Paris-Saclay}
+\date{Orange Research \textemdash{} 13 mai 2026}
+
+\begin{document}
+
+% =====================================================================
+% Title
+% =====================================================================
+\begin{frame}[plain]
+  \vspace{1.6cm}
+  \begin{center}
+    {\usebeamerfont{title}\usebeamercolor[fg]{title}\inserttitle}\\[0.4em]
+    \textcolor{midgray}{\rule{0.4\paperwidth}{0.3pt}}\\[0.6em]
+    {\usebeamerfont{subtitle}\usebeamercolor[fg]{subtitle}\insertsubtitle}\\[1.6em]
+    {\usebeamerfont{author}\usebeamercolor[fg]{author}\insertauthor}\\[0.2em]
+    {\usebeamerfont{institute}\usebeamercolor[fg]{institute}\insertinstitute}\\[1.4em]
+    {\usebeamerfont{date}\usebeamercolor[fg]{date}\insertdate}
+  \end{center}
+\end{frame}
+
+% =====================================================================
+% 1. L'arbre de dépendances
+% =====================================================================
+\begin{frame}{Le squelette syntaxique : l'arbre de d\'ependances}
+  \begin{columns}[T]
+    \column{0.52\textwidth}
+    \vspace{0.1cm}
+    \centering
+    \begin{tikzpicture}[scale=0.95, every node/.style={font=\small, color=darknavy}]
+      \node (read)    at ( 0,    2.6) {\textbf{read}};
+      \node (student) at (-2.0,  1.7) {\textbf{student}};
+      \node (book)    at ( 0,    1.7) {\textbf{book}};
+      \node (yest)    at ( 2.0,  1.7) {\textbf{yesterday}};
+      \node (the1)    at (-2.0,  0.8) {The};
+      \node (the2)    at ( 0,    0.8) {the};
+      \draw[thick, darknavy] (read) -- (student);
+      \draw[thick, darknavy] (read) -- (book);
+      \draw[thick, darknavy] (read) -- (yest);
+      \draw[thick, darknavy] (student) -- (the1);
+      \draw[thick, darknavy] (book)    -- (the2);
+      % Edge labels
+      \node[midgray, font=\scriptsize] at (-1.15, 2.25) {nsubj};
+      \node[midgray, font=\scriptsize] at ( 0.32, 2.25) {obj};
+      \node[midgray, font=\scriptsize] at ( 1.15, 2.25) {advmod};
+      \node[midgray, font=\scriptsize, anchor=east] at (-2.05, 1.25) {det};
+      \node[midgray, font=\scriptsize, anchor=west] at ( 0.05, 1.25) {det};
+      % Caption
+      \node[midgray, font=\footnotesize, anchor=north] at (0, 0.2)
+        {« The student read the book yesterday. »};
+    \end{tikzpicture}
+
+    \vspace{0.25cm}
+    {\footnotesize\color{midgray}
+    \begin{tabular}{@{}l@{\;}c@{\;}l@{}}
+      $d_T(\text{read},\text{student})$ & $=$ & $1$\\
+      $d_T(\text{The},\text{book})$     & $=$ & $3$\\
+      $d_T(\text{The},\text{the})$      & $=$ & $4$\\
+    \end{tabular}}
+
+    \column{0.45\textwidth}
+    \vspace{0.4cm}
+    \begin{itemize}\setlength\itemsep{8pt}
+      \item Chaque mot a exactement \alert{une t\^ete} (la racine n'en a aucune).
+      \item Les ar\^etes portent des \'etiquettes fonctionnelles
+            (\texttt{nsubj}, \texttt{obj}, \ldots) \textemdash{}
+            mais \alert{H\&M les ignorent} : seule la topologie compte.
+      \item La \alert{distance d'arbre} $d_T(w_i, w_j)$ est le nombre
+            d'ar\^etes du chemin unique entre deux mots.
+    \end{itemize}
+
+    \vspace{0.4cm}
+    {\footnotesize\color{midgray}\itshape
+    Cet arbre est l'objet de r\'ef\'erence : on demandera aux
+    repr\'esentations de \mbert{} de le reproduire g\'eom\'etriquement.}
+  \end{columns}
+\end{frame}
+
+% =====================================================================
+% 2. "Syntaxe" est un mot piège
+% =====================================================================
+\begin{frame}{« Syntaxe » : que mesure-t-on exactement ?}
+  \vspace{0.2cm}
+  Le mot \emph{syntaxe} recouvre plusieurs notions distinctes.
+  La sonde structurelle de Hewitt~\& Manning n'en mesure
+  \alert{qu'une seule}.
+
+  \vspace{0.5cm}
+  \begin{columns}[T]
+    \column{0.46\textwidth}
+    \begin{block}{\color{accent}Mesur\'e (H\&M)}
+      \vspace{0.1cm}
+      \begin{itemize}\setlength\itemsep{4pt}
+        \item Topologie de l'arbre de d\'ependances UD
+              (non \'etiquet\'e, non orient\'e).
+      \end{itemize}
+      \vspace{1.6cm}
+    \end{block}
+
+    \column{0.50\textwidth}
+    \begin{block}{\color{midgray}Hors du cadre}
+      \vspace{0.1cm}
+      \begin{itemize}\setlength\itemsep{2pt}
+        \item \'Etiquettes des ar\^etes
+              (\texttt{nsubj}, \texttt{obj}, \ldots)
+        \item Structure de constituants (NP, VP, PP, \ldots)
+        \item Mouvement, liage, contraintes d'\^iles
+        \item Accord \`a longue distance (sujet--verbe)
+        \item Grammaticalit\'e \textemdash{} ce qui n'est \emph{pas} permis
+        \item R\^oles s\'emantiques (agent, patient, \ldots)
+      \end{itemize}
+    \end{block}
+  \end{columns}
+
+  \vspace{0.5cm}
+  \small\itshape
+  Quand on dit dans ce travail « la syntaxe est encod\'ee dans \mbert{} »,
+  on parle uniquement de la \alert{topologie du graphe de d\'ependances}.
+  Pas de la syntaxe au sens chomskyen, pas de la grammaticalit\'e,
+  pas des relations fonctionnelles.
+\end{frame}
+
+% =====================================================================
+% 3. L'hypothèse exacte
+% =====================================================================
+\begin{frame}{L'hypoth\`ese exacte de Hewitt \& Manning (2019)}
+  \vspace{0.3cm}
+  \centering
+  {\Large $\displaystyle \bigl\| B\,(h_i - h_j) \bigr\|_2^{\,2}
+   \;\approx\; d_T(w_i,\, w_j)$}
+
+  \vspace{0.7cm}
+  \begin{columns}[T]
+    \column{0.34\textwidth}
+    {\footnotesize
+    \textbf{Lecture des symboles}\\[6pt]
+    \begin{itemize}\setlength\itemsep{4pt}
+      \item $h_i, h_j \in \mathbb{R}^d$ : vecteurs contextuels de
+            \mbert{} (couche fix\'ee, $d{=}768$).
+      \item $B \in \mathbb{R}^{r \times d}$ : projection
+            \alert{lin\'eaire} apprise ($r{=}128 \ll d$).
+      \item $d_T$ : distance de graphe dans l'arbre UD annot\'e.
+    \end{itemize}}
+
+    \column{0.62\textwidth}
+    {\footnotesize
+    \textbf{Trois affirmations dans une seule formule}\\[6pt]
+    \begin{itemize}\setlength\itemsep{6pt}
+      \item \textbf{Lin\'eaire.}
+            Si une projection \emph{lin\'eaire} suffit, la syntaxe est
+            \alert{d\'ej\`a l\`a} dans la repr\'esentation \textemdash{}
+            ce n'est pas la sonde qui l'invente. Une MLP profonde
+            la trouverait m\^eme dans des vecteurs al\'eatoires.
+      \item \textbf{Sous-espace de basse dimension} ($r \ll d$).
+            La syntaxe ne n\'ecessite pas les $768$ axes : elle vit
+            sur une petite ardoise dans l'espace \mbert{}.
+      \item \textbf{M\'etrique g\'eom\'etrique.}
+            Pas seulement « information disponible » : les
+            distances euclidiennes au carr\'e \emph{approximent} les
+            distances d'arbre. Une structure discr\`ete embarqu\'ee
+            comme une m\'etrique continue \textemdash{}
+            \alert{c'est le r\'esultat surprenant}.
+    \end{itemize}}
+  \end{columns}
+
+  \vspace{0.4cm}
+  \centering\footnotesize\color{midgray}\itshape
+  Mesur\'e par \textbf{Spearman} (corr\'elation des distances) et
+  \textbf{UUAS} (ar\^etes correctement reconstruites).
+  Hypoth\`ese falsifiable, comparable entre langues et mod\`eles.
+\end{frame}
+
+% =====================================================================
+% 4. L'arbre vrai est une convention
+% =====================================================================
+\begin{frame}{L'arbre « vrai » est une convention, pas la v\'erit\'e}
+  \vspace{0.2cm}
+  L'arbre de r\'ef\'erence est ce qu'une \'equipe d'annotateurs
+  (Taul\'e et al., Universitat de Barcelona, AnCora 2008) a marqu\'e en
+  suivant les conventions \alert{Universal Dependencies}. Choix sp\'ecifiques :
+
+  \vspace{0.3cm}
+  \begin{itemize}\setlength\itemsep{4pt}
+    \item Les \emph{contractions} espagnoles
+          (\textit{del = de + el}) : repr\'esent\'ees comme deux n\oe{}uds
+          sous un rang composite.
+    \item Les sujets \emph{pro-drop} : repr\'esent\'es comme des
+          n\oe{}uds vides explicites.
+    \item La place de la copule (\textit{ser}, \textit{estar}) :
+          t\^ete ou d\'ependant ?
+    \item L'attachement des modificateurs ambigus (PP-attachment).
+  \end{itemize}
+
+  \vspace{0.4cm}
+  D'autres formalismes (HPSG, LFG, grammaire de constituants) donneraient
+  des arbres \emph{partiellement diff\'erents} pour la m\^eme phrase.
+
+  \vspace{0.4cm}
+  \centering
+  \alert{Quand on rapporte UUAS $= 0{,}76$, on dit :}\\[2pt]
+  \emph{« la sonde concorde \`a $76\,\%$ avec cette convention
+  d'annotation »} \textemdash{} pas avec « la syntaxe de
+  l'espagnol » dans l'absolu.
+\end{frame}
+
+\end{document}
+   

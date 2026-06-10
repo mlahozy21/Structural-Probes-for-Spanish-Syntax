@@ -1,0 +1,312 @@
+% =====================================================================
+%  Guion de la présentation
+%  « Les transformers (type BERT) encodent-ils la syntaxe d'une langue ? »
+%  Marcos Lahoz Yague --- Orange Research, 13 mai 2026
+% =====================================================================
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[a4paper, margin=2.3cm]{geometry}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xspace}
+\usepackage{amsmath}
+
+\definecolor{accent}{RGB}{255, 121, 0}
+\definecolor{darknavy}{RGB}{26, 43, 76}
+\definecolor{midgray}{RGB}{120, 130, 140}
+
+\titleformat{\section}
+  {\large\bfseries\color{darknavy}}
+  {Slide~\thesection.}{0.5em}{}
+\titlespacing*{\section}{0pt}{1.2em}{0.4em}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.4em}
+
+\newcommand{\visuel}[1]{%
+  {\footnotesize\color{midgray}\textit{Visuel : #1}\par\vspace{0.3em}}}
+\newcommand{\transition}[1]{%
+  \par\vspace{0.4em}{\footnotesize\color{accent}\textit{Transition :} #1}}
+\newcommand{\duree}[1]{\hfill{\footnotesize\color{midgray}(${\sim}#1$\,s)}}
+\newcommand{\mbert}{m\textsc{BERT}\xspace}
+
+\title{\Large Guion de la présentation\\[0.3em]
+       \large\textcolor{midgray}{« Les \emph{transformers} (type BERT)
+       encodent-ils la syntaxe d'une langue ?»}}
+\author{Marcos Lahoz Yague \textemdash{} Orange Research, 13 mai 2026}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent\textcolor{midgray}{\footnotesize Budget total : 8 minutes
+(${\sim}480$\,s, soit ${\sim}25$--$30$\,s par slide en moyenne).
+Les durées indicatives sont à droite de chaque section.}
+
+\hrule
+\vspace{0.6em}
+
+% =====================================================================
+\section{Titre} \duree{20}
+\visuel{page de titre, nom et affiliation.}
+
+Bonjour, je suis Marcos Lahoz Yague. Aujourd'hui je vais vous présenter
+un travail réalisé pendant mon Master 2 à Paris-Saclay, sur la
+question : les modèles \emph{transformers} de type BERT,
+encodent-ils la syntaxe du langage ? En huit minutes, je vais vous
+montrer la méthode, les résultats principaux, et où ce travail
+pourrait s'étendre vers le doctorat.
+
+% =====================================================================
+\section{Le langage est arborescent} \duree{30}
+\visuel{phrase « The cat ate the fish» avec son arbre de
+        dépendances.}
+
+Pour répondre à cette question, il faut d'abord se mettre d'accord sur
+ce que nous appelons « syntaxe». Dans ce travail, nous prenons
+une définition précise : l'arbre de dépendances. Chaque mot d'une
+phrase a exactement \emph{une} tête grammaticale --- le mot dont il
+dépend. La seule exception est la racine, typiquement le verbe
+principal. Les arêtes peuvent porter des étiquettes --- sujet, objet,
+déterminant --- mais comme Hewitt et Manning, nous ne regardons que
+la \emph{topologie}. C'est cet arbre que nous chercherons à retrouver
+dans BERT.
+
+% =====================================================================
+\section{Deux métriques sur l'arbre} \duree{35}
+\visuel{profondeur (badges orange) et distance (chemin orange) sur le
+        même arbre.}
+
+Cette définition nous donne deux quantités numériques naturelles. À
+gauche : la \textbf{profondeur} d'un mot --- le nombre d'arêtes
+jusqu'à la racine. Le verbe principal est à zéro, ses dépendants
+directs à un. À droite : la \textbf{distance} entre deux mots --- le
+nombre d'arêtes du chemin unique qui les relie. Par exemple,
+« cat» et « fish» sont à distance deux, parce qu'on passe
+par « ate». C'est sur la distance que nous concentrons nos
+expériences --- elle donne $O(n^2)$ paires de supervision par phrase
+contre $O(n)$ pour la profondeur, et c'est aussi sur les distances
+que la sonde isométrique aura un sens géométrique direct.
+
+% =====================================================================
+\section{BERT comprend-il la syntaxe ?} \duree{30}
+\visuel{liste des tâches où BERT excelle + diagramme MLM.}
+
+BERT est un modèle \emph{transformer} préentraîné qui a marqué une
+étape majeure en NLP. Il obtient d'excellents résultats sur de
+nombreuses tâches : réponse aux questions, inférence textuelle,
+classification, recherche web. Ce succès suggère que BERT
+« comprend» le langage. Et pourtant --- c'est ce que montre
+le diagramme à droite --- pendant son préentraînement, BERT ne fait
+qu'\emph{une} chose : prédire des tokens masqués. Aucun arbre, aucune
+étiquette grammaticale, aucune tête, aucun rôle. La question est
+donc : si la syntaxe est là, où est-elle ?
+
+% =====================================================================
+\section{Qu'est-ce qu'une sonde ?} \duree{40}
+\visuel{schéma de la sonde au-dessus du modèle figé.}
+
+La méthode pour répondre s'appelle le \emph{probing}. Le principe :
+on gèle les paramètres du modèle, on extrait les vecteurs $h_i$
+d'une couche cachée, et au-dessus on entraîne un \emph{petit} modèle
+supervisé --- typiquement une simple projection linéaire --- à
+prédire une propriété linguistique annotée. Pourquoi un modèle aussi
+petit ? Parce que si une projection linéaire suffit, c'est que la
+propriété est \emph{déjà} encodée géométriquement dans les vecteurs.
+Une sonde trop puissante apprendrait elle-même la structure ---
+même à partir de vecteurs aléatoires --- et on ne saurait plus si
+l'information vient du modèle ou de la sonde.
+
+% =====================================================================
+\section{La sonde structurelle de Hewitt \& Manning (2019)} \duree{45}
+\visuel{formule $\|B(h_i - h_j)\|^2 \approx d_T(w_i, w_j)$ +
+        flèche $B$ des vecteurs aux points projetés.}
+
+En 2019, Hewitt et Manning proposent la \emph{sonde structurelle}.
+L'idée : apprendre une projection linéaire $B$ telle que la distance
+euclidienne au carré entre deux vecteurs projetés approxime la
+distance dans l'arbre de dépendances. Visuellement, à droite : on
+prend les vecteurs bruts de BERT (les points bleus en haut), on les
+projette par $B$, et on obtient les points oranges en bas, disposés
+de manière à ce que leurs distances euclidiennes reflètent l'arbre.
+La sonde n'a accès qu'aux vecteurs --- jamais à la phrase, jamais à
+l'arbre directement. Si cette projection linéaire fonctionne, alors
+la syntaxe vit géométriquement dans l'espace des représentations.
+
+% =====================================================================
+\section{Comment évaluer la sonde ? Deux métriques} \duree{45}
+\visuel{scatter plot Spearman + arbre UUAS avec une arête erronée.}
+
+Pour mesurer la qualité de la sonde, deux métriques. À gauche, la
+\textbf{corrélation de Spearman} : on regarde si les distances
+prédites sont dans le \emph{bon ordre} que les distances vraies.
+C'est une corrélation de rang, calculée sur toutes les paires de
+mots d'une phrase. On rapporte $\rho_{5\text{-}50}$, moyenne sur les
+phrases de longueur 5 à 50 mots. À droite, l'\textbf{UUAS} : à
+partir des distances prédites, on construit un arbre couvrant
+minimum, et on compte la fraction d'arêtes correctes --- non
+étiquetées, non orientées. Dans l'exemple, trois sur quatre arêtes
+sont correctes, soit UUAS $= 0{,}75$.
+
+% =====================================================================
+\section{Résultat sur l'anglais} \duree{30}
+\visuel{graphique de barres : Baseline vs BERT-base, UUAS et Spearman.}
+
+Voici le résultat principal de Hewitt et Manning sur l'anglais. À
+droite, BERT-base à la couche 7 : UUAS $= 0{,}80$, Spearman
+$= 0{,}85$. À gauche, le baseline non contextualisé : $0{,}49$ et
+$0{,}50$. Plus 31 points en UUAS, plus 35 en Spearman --- sans aucun
+entraînement syntaxique. Performance proche des analyseurs
+syntaxiques entièrement supervisés sur PTB. La syntaxe vit donc bien
+dans la géométrie de BERT.
+
+% =====================================================================
+\section{Ce que nous ajoutons} \duree{25}
+\visuel{deux questions ouvertes en colonnes.}
+
+Hewitt et Manning ont répondu à la question pour BERT en anglais.
+Nous prolongeons leur travail avec deux questions ouvertes.
+Premièrement : la même géométrie syntaxique existe-t-elle dans
+\mbert{}, pour des langues autres que l'anglais ? Concrètement, ça
+marche-t-il sur l'espagnol ? Deuxièmement : la syntaxe est-elle une
+forme \emph{rigide} dans l'espace, ou faut-il l'\emph{amplifier}
+par des étirements non uniformes ? Pour ces deux questions, deux
+contributions : une réplication couche par couche sur AnCora, et
+une \emph{sonde isométrique}.
+
+% =====================================================================
+\section{Données : UD\_Spanish-AnCora} \duree{25}
+\visuel{partitions du treebank, encodeur, hyperparamètres de la sonde.}
+
+Pour la première question, nous utilisons le treebank
+\textsc{ud\_spanish-ancora} --- la partie espagnole d'AnCora dans
+Universal Dependencies. Quatorze mille phrases d'entraînement, mille
+six cents en dev, mille sept cents en test. L'encodeur est \mbert{},
+\texttt{bert-base-multilingual-cased}, couvrant 104 langues,
+complètement figé. La sonde a un rang 128, perte $\ell_1$, 30 époques
+avec early stopping. L'espagnol amène deux complications absentes du
+PTB anglais : les \emph{contractions} comme « del = de + el»,
+et les sujets \emph{pro-drop} sous forme de n\oe{}uds vides --- il
+faut bien les filtrer pour ne pas polluer la sonde.
+
+% =====================================================================
+\section{Résultat 1 : layer sweep sur l'espagnol} \duree{40}
+\visuel{courbe en cloche sur les 13 couches de mBERT.}
+
+Nous balayons les 13 couches de \mbert{} et entraînons une sonde par
+couche. Le résultat : une courbe en cloche qui reproduit exactement
+la forme observée par Hewitt et Manning sur l'anglais. Spearman
+pique à $0{,}86$ à la couche 7, UUAS à $0{,}76$ à la même couche.
+Donc la syntaxe espagnole se concentre au milieu du réseau, comme
+en anglais.
+
+% =====================================================================
+\section{Transfert cross-lingue} \duree{40}
+\visuel{tableau comparatif H\&M vs nous.}
+
+Comparons directement à Hewitt et Manning. Eux, sur PTB anglais :
+Spearman ${\approx} 0{,}85$, UUAS ${\approx} 0{,}80$. Nous, sur
+AnCora espagnol via \mbert{} : Spearman $= 0{,}86$, UUAS $= 0{,}76$.
+La même couche pique. Spearman est même légèrement plus haut. UUAS
+n'est que $4$ points en dessous, malgré la dilution de \mbert{} sur
+104 langues. C'est une forte évidence pour un \emph{sous-espace
+syntaxique partagé} entre les langues, en accord avec Chi et al.\
+(ACL 2020).
+
+% =====================================================================
+\section{La sonde isométrique} \duree{45}
+\visuel{formule $B B^\top = I$ + interprétation rigide vs étirable.}
+
+Passons maintenant à la deuxième question. La sonde linéaire fait
+deux choses entremêlées : elle \emph{tourne} et elle \emph{étire}
+l'espace. Notre extension isole ces deux opérations en contraignant
+la projection à être orthogonale : $B B^\top = I$, c'est-à-dire que
+$B$ est une rotation pure. Si la syntaxe est une forme rigide dans
+l'espace \mbert{}, l'isométrique doit égaler la sonde linéaire. Si
+la syntaxe nécessite un étirement anisotrope, l'isométrique doit
+s'effondrer. C'est un test propre, par construction.
+
+% =====================================================================
+\section{Deux scénarios} \duree{25}
+\visuel{illustration des deux hypothèses --- rigide vs étirable.}
+
+Les deux scénarios qu'on cherche à distinguer. À gauche : si l'arbre
+est rigide dans le sous-espace, l'isométrique conserve les distances
+et reproduit le résultat de la sonde linéaire. À droite : si l'arbre
+est dans une direction \emph{étirée} de faible variance, la rotation
+pure ne peut pas le récupérer.
+
+% =====================================================================
+\section{Résultat 2 : l'effet Pancake} \duree{50}
+\visuel{tableau Linéaire vs Isométrique + interprétation Pancake.}
+
+Le résultat est sans appel. À la couche 7, la sonde linéaire :
+UUAS $= 0{,}76$, Spearman $= 0{,}86$, nombre de condition
+$\kappa(B) = 3{,}74$ --- la sonde étire l'espace par un facteur
+${\sim}4$ entre ses directions principales. La sonde isométrique,
+contrainte à être une rotation pure, s'effondre :
+UUAS $= 0{,}27$, Spearman $= 0{,}35$ --- soit \textbf{$-64\,\%$ en UUAS}. Interprétation : l'arbre syntaxique espagnol est aplati dans
+des directions de \emph{faible variance} de l'espace \mbert{}. La
+sonde doit amplifier ces directions par environ $4$ pour faire
+ressortir la structure. C'est ce que nous appelons l'effet
+\emph{Pancake} : la syntaxe vit dans une crêpe, pas dans une boule.
+
+% =====================================================================
+\section{Limitations} \duree{25}
+\visuel{liste des limitations.}
+
+Quelques limites honnêtes. Tous les chiffres sont sur \emph{une
+seule} graine ; il faudrait répéter avec au moins 5 seeds et reporter
+moyenne $\pm$ écart-type. Le test set n'a pas été touché, par
+discipline. Une tâche de contrôle à la Hewitt-Liang aborderait la
+question de la capacité intrinsèque de la sonde. Et il faudrait
+comparer contre des encodeurs espagnols monolingues comme BETO,
+pour quantifier le coût de la dilution multilingue de \mbert{}.
+
+% =====================================================================
+\section{Du probing syntaxique au probing multimodal} \duree{40}
+\visuel{tableau de correspondances syntaxe → multimodal.}
+
+Comment ce travail se relie-t-il au doctorat sur le raisonnement
+multimodal sur vidéo ? La méthodologie --- sonde plus diagnostic
+géométrique --- se généralise directement. Mêmes questions, autres
+propriétés : où vit chaque modalité dans un MLLM ? Sont-elles
+rigidement préservées, c'est-à-dire $\kappa$ proche de 1 quand on
+isole chacune ? À quelle couche se cristallise leur interaction,
+et observe-t-on un effondrement modal analogue à l'effet Pancake ?
+Cela connecte avec les travaux récents sur le \emph{modality
+collapse} (Park et al., AAAI 2025 ; Wang et al., CVPR 2025). Même
+méthodologie, dimension supérieure.
+
+% =====================================================================
+\section{À retenir} \duree{30}
+\visuel{trois points résumés.}
+
+Trois choses à retenir.
+
+\textbf{Premièrement}, nous avons répliqué la sonde structurelle
+en espagnol --- UUAS $0{,}76$ à la couche 7, à seulement $4$ points
+du pic anglais. Forte évidence d'un sous-espace syntaxique
+cross-lingue.
+
+\textbf{Deuxièmement}, nous avons documenté trois pièges
+méthodologiques de réplication qui empoisonnaient silencieusement le
+pipeline (n\oe{}uds vides, ponctuation espagnole, indexation des
+couches) : leur correction donne $+51\,\%$ d'UUAS.
+
+\textbf{Troisièmement}, nous avons introduit la \emph{sonde
+isométrique}. La chute de $-64\,\%$ d'UUAS montre que la géométrie
+syntaxique espagnole est \emph{étirable, pas rigide} : effet
+« Pancake», $\kappa(B) = 3{,}74$.
+
+\medskip
+
+Merci. Je reste à votre disposition pour les questions.
+
+\end{document}

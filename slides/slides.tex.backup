@@ -1,0 +1,697 @@
+% =====================================================================
+%  Présentation entretien doctorat — Orange Research, 13 mai 2026
+%  "La syntaxe espagnole se cache-t-elle dans mBERT ?"
+% =====================================================================
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usetheme{default}
+\usecolortheme{seagull}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+\setbeamertemplate{itemize items}[circle]
+\setbeamercolor{frametitle}{fg=black}
+\setbeamercolor{title}{fg=black}
+\setbeamerfont{frametitle}{size=\large, series=\bfseries}
+\setbeamerfont{title}{size=\Large, series=\bfseries}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+% French babel not installed in this TeX distribution; we rely on
+% inputenc + lmodern for accented characters and use literal Unicode
+% guillemets « » directly.
+\usepackage{lmodern}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, shapes.geometric, fit, backgrounds}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{xcolor}
+\usepackage{xspace}
+
+\definecolor{accent}{RGB}{255, 121, 0}
+\definecolor{frozenblue}{RGB}{100, 140, 200}
+\definecolor{probegreen}{RGB}{80, 160, 80}
+\setbeamercolor{structure}{fg=accent}
+
+\newcommand{\mbert}{m\textsc{BERT}\xspace}
+\newcommand{\ancora}{UD\_Spanish-AnCora\xspace}
+
+\title{La syntaxe espagnole se cache-t-elle dans mBERT ?}
+\subtitle{Sondes structurelles et extension isométrique}
+\author{Marcos Lahoz Yago}
+\date{Orange Research --- 13 mai 2026}
+
+\begin{document}
+
+% =====================================================================
+% 1. Titre
+% =====================================================================
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% =====================================================================
+% 2a. Le langage est arborescent
+% =====================================================================
+\begin{frame}{Le langage est \emph{arborescent}}
+  \begin{columns}[T]
+    \column{0.5\textwidth}
+    \vspace{0.3cm}
+    Les linguistes décrivent les phrases comme des \alert{arbres
+    de dépendances} :
+    \begin{itemize}\setlength\itemsep{4pt}
+      \item un \emph{verbe} gouverne un sujet, un objet, des modificateurs ;
+      \item chaque mot est lié à son \emph{tête} syntaxique ;
+      \item la structure est \alert{récursive} et \alert{hiérarchique}.
+    \end{itemize}
+
+    \vspace{0.4cm}
+    \footnotesize
+    Cette représentation, héritée de Chomsky (\textit{Syntactic Structures},
+    1957), est la base de presque toute l'analyse syntaxique moderne.
+
+    \column{0.48\textwidth}
+    \centering
+    \vspace{0.3cm}
+    \begin{tikzpicture}[scale=1.0, every node/.style={font=\small}]
+      \node (v) at (0,3) {\textbf{ate}};
+      \node (s) at (-1.8,2) {\textbf{cat}};
+      \node (a) at (-1.8,1) {The};
+      \node (o) at (1.8,2) {\textbf{fish}};
+      \node (b) at (1.8,1) {the};
+      \draw[thick] (v) -- (s);
+      \draw[thick] (v) -- (o);
+      \draw[thick] (s) -- (a);
+      \draw[thick] (o) -- (b);
+      \node[gray] at (0,3.7) {Arbre de dépendances};
+      \node[gray, font=\footnotesize] at (0,0.3) {« The cat ate the fish »};
+      \node[gray, font=\scriptsize, anchor=east] at (-1.85,1.5) {det};
+      \node[gray, font=\scriptsize, anchor=east] at (-0.55,2.5) {sujet};
+      \node[gray, font=\scriptsize, anchor=west] at (0.55,2.5) {objet};
+      \node[gray, font=\scriptsize, anchor=west] at (1.85,1.5) {det};
+    \end{tikzpicture}
+  \end{columns}
+\end{frame}
+
+% =====================================================================
+% 2b. Avant BERT : analyse supervisée
+% =====================================================================
+\begin{frame}{Avant BERT : on \emph{enseignait} la syntaxe au modèle}
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+    Pendant des décennies, l'analyse syntaxique était une tâche
+    \alert{entièrement supervisée}.
+
+    \vspace{0.3cm}
+    \textbf{Recette classique :}
+    \begin{enumerate}\setlength\itemsep{4pt}
+      \item annoter à la main des milliers de phrases avec leur arbre
+            (Penn Treebank, 1993 : 4{,}5 M de mots) ;
+      \item entraîner un analyseur sur ces arbres
+            (Collins, Charniak, \ldots) ;
+      \item évaluer sur des phrases nouvelles.
+    \end{enumerate}
+
+    \vspace{0.3cm}
+    \textbf{Limites :}
+    \begin{itemize}\setlength\itemsep{2pt}
+      \item annotation \alert{coûteuse} (mois d'experts par treebank) ;
+      \item \alert{biais de domaine} (Wall Street Journal\ldots) ;
+      \item difficile à généraliser à d'autres langues.
+    \end{itemize}
+
+    \column{0.43\textwidth}
+    \centering
+    \vspace{0.4cm}
+    \begin{tikzpicture}[scale=0.85, every node/.style={font=\footnotesize}]
+      % Mini "annotated example"
+      \node[draw, fill=gray!10, rounded corners, text width=4.6cm,
+            inner sep=6pt] (box) at (0,0) {%
+        \textbf{Exemple annoté}\\[3pt]
+        \texttt{1\quad The\quad DET\quad 2}\\
+        \texttt{2\quad cat\quad NOUN\quad 3}\\
+        \texttt{3\quad ate\quad VERB\quad 0}\\
+        \texttt{4\quad the\quad DET\quad 5}\\
+        \texttt{5\quad fish\quad NOUN\quad 3}\\[3pt]
+        \scriptsize\textcolor{gray}{(format CoNLL : mot, POS, tête)}};
+      \node[gray, font=\scriptsize, anchor=north] at (0,-2.2)
+        {\emph{une ligne par mot, une vie par treebank.}};
+    \end{tikzpicture}
+  \end{columns}
+\end{frame}
+
+% =====================================================================
+% 2c. BERT et l'énigme
+% =====================================================================
+\begin{frame}{BERT (2019) : ni arbres, ni étiquettes \ldots et pourtant}
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+    \alert{BERT} change la donne. Entraîné uniquement sur la
+    \alert{prédiction de tokens masqués} sur des milliards de mots
+    bruts, sans aucune annotation linguistique.
+
+    \medskip
+    \emph{Il ne voit jamais un seul arbre syntaxique pendant le
+    pré-entraînement.}
+
+    \vspace{0.4cm}
+    Et pourtant, il gère :
+    \begin{itemize}\setlength\itemsep{2pt}
+      \item l'accord à longue distance,
+      \item les dépendances hiérarchiques,
+      \item la cohérence inter-phrastique,
+      \item la résolution d'ambiguïtés syntaxiques.
+    \end{itemize}
+
+    \vspace{0.4cm}
+    \large
+    \alert{Où se cache la syntaxe ?}
+
+    \column{0.43\textwidth}
+    \centering
+    \vspace{0.6cm}
+    \begin{tikzpicture}[scale=0.85, every node/.style={font=\footnotesize}]
+      \node[font=\small] at (0,2.5) {\textbf{Tâche de pré-entraînement}};
+      \node[draw, fill=gray!10, rounded corners, text width=5.2cm,
+            inner sep=8pt, font=\ttfamily\small] at (0,1.5)
+        {The cat ate the [MASK].};
+      \draw[->, thick, accent] (0,0.7) -- (0,0.1);
+      \node[font=\small] at (0,-0.3) {prédire \texttt{fish}};
+      \node[gray, font=\scriptsize] at (0,-0.9)
+        {(une tâche, des milliards de fois)};
+
+      \draw[dashed, gray] (-2.6,-1.4) -- (2.6,-1.4);
+      \node[font=\scriptsize, gray, text width=5cm, align=center] at (0,-2.0)
+        {\emph{Aucune information sur les arbres,\\ les têtes, les rôles syntaxiques.}};
+    \end{tikzpicture}
+  \end{columns}
+\end{frame}
+
+% =====================================================================
+% 3. Brève histoire
+% =====================================================================
+\begin{frame}{Brève histoire de la syntaxe en TAL}
+  \centering
+  \vspace{0.3cm}
+  \begin{tikzpicture}[every node/.style={font=\footnotesize}]
+    \draw[->, very thick, gray] (-0.3,0) -- (12.3,0);
+    \foreach \x/\y in {0/1957, 3/1993, 6/2013, 9/2018-19, 12/2026}
+      \draw[gray] (\x,-0.15) -- (\x,0.15) node[above=2pt, gray] {\y};
+    \node[align=center, anchor=north, text width=2.6cm] at (0,-0.3)
+      {\textbf{Chomsky}\\[1pt]Phrases = arbres, grammaire générative};
+    \node[align=center, anchor=north, text width=2.6cm] at (3,-0.3)
+      {\textbf{Penn Treebank}\\[1pt]Analyse supervisée sur arbres annotés};
+    \node[align=center, anchor=north, text width=2.6cm] at (6,-0.3)
+      {\textbf{word2vec}\\[1pt]Structure linguistique = géométrie vectorielle};
+    \node[align=center, anchor=north, text width=2.6cm] at (9,-0.3)
+      {\textbf{BERT}\\[1pt]Auto-supervisé, sans arbres syntaxiques};
+    \node[align=center, anchor=north, text width=2.6cm, accent] at (12,-0.3)
+      {\textbf{Aujourd'hui}\\[1pt]Connaissent-ils la syntaxe \emph{quand même} ?};
+  \end{tikzpicture}
+
+  \vspace{2.4cm}
+
+  \begin{itemize}
+    \item Avant 2018 : on \emph{enseigne} la syntaxe au modèle (supervision).
+    \item Après BERT : le modèle n'est \emph{jamais informé} --- mais semble
+          se comporter comme s'il la connaissait.
+    \item \alert{Le \emph{probing}} = l'outil standard pour découvrir ce
+          que le modèle a réellement appris.
+  \end{itemize}
+\end{frame}
+
+% =====================================================================
+% 4. Qu'est-ce qu'une sonde ?
+% =====================================================================
+\begin{frame}{Qu'est-ce qu'une \emph{sonde} (probe) ?}
+  \begin{columns}[T]
+    \column{0.5\textwidth}
+    \textbf{Le principe}\\[4pt]
+    On prend un modèle pré-entraîné et figé. On entraîne au-dessus
+    une \alert{petite tête supervisée} sur l'une de ses couches
+    cachées, pour prédire une propriété linguistique
+    (POS, arête de dépendance, distance syntaxique).
+
+    \vspace{0.4cm}
+    \textbf{Pourquoi « petite » ?}\\[4pt]
+    Si une sonde \emph{simple} réussit, alors la propriété est déjà
+    \alert{linéairement récupérable} dans la représentation.
+    Une tête trop grande peut tout apprendre --- on la garde minimale
+    par construction.
+
+    \vspace{0.4cm}
+    \footnotesize
+    Outil standard en interprétabilité
+    (Ethayarajh, Hewitt-Liang, Voita-Titov\ldots).
+
+    \column{0.48\textwidth}
+    \centering
+    \vspace{0.2cm}
+    \begin{tikzpicture}[scale=0.85, every node/.style={font=\footnotesize}]
+      \foreach \i/\lab in {0/Couche 1, 1/Couche 2, 2/$\vdots$, 3/Couche 7, 4/$\vdots$, 5/Couche 12} {
+        \draw[fill=frozenblue!20, draw=frozenblue]
+          (-1.4, 0.55*\i) rectangle (1.4, 0.55*\i+0.45);
+        \node[font=\scriptsize] at (0, 0.55*\i+0.22) {\lab};
+      }
+      \node[font=\small, anchor=south] at (0, 3.4) {Modèle \textbf{figé}};
+      \node[font=\Large] at (-2.0, 1.65) {$\boxtimes$};
+      \node[font=\scriptsize, gray] at (-2.4, 1.0) {(pas de gradient)};
+
+      \draw[->, thick, accent] (1.45, 1.87) -- (3.0, 1.87);
+
+      \draw[fill=probegreen!25, draw=probegreen, thick]
+        (3.0, 1.4) rectangle (5.4, 2.4);
+      \node[font=\small] at (4.2, 1.9) {\textbf{Sonde} ($B$)};
+      \node[font=\scriptsize, gray] at (4.2, 1.65) {petite, entraînable};
+
+      \draw[->, thick, accent] (5.45, 1.9) -- (6.5, 1.9);
+      \node[anchor=west, font=\scriptsize, align=left] at (6.5, 1.9)
+        {prédire les\\ distances de l'arbre};
+    \end{tikzpicture}
+  \end{columns}
+\end{frame}
+
+% =====================================================================
+% 5. Hewitt & Manning hypothèse
+% =====================================================================
+\begin{frame}{Hewitt \& Manning, NAACL 2019 : la sonde structurelle}
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+    \textbf{Idée.} Entraîner une projection linéaire $B$ sur BERT figé,
+    de sorte que la distance euclidienne au carré entre deux vecteurs
+    de mots approxime leur \alert{distance dans l'arbre syntaxique}.
+
+    \medskip
+    \textbf{Hypothèse.} Il existe $B \in \mathbb{R}^{r\times d}$ tel
+    que :
+    \[
+      \widehat{d}_{ij} \;=\; \lVert B(h_i - h_j) \rVert_2^2
+      \;\approx\; d_T(w_i, w_j)
+    \]
+
+    \footnotesize
+    Entraînement de $B$ par régression $\ell_1$ sur les distances de
+    l'arbre.\\[2pt]
+    Aucune information syntaxique pendant le pré-entraînement.\\[2pt]
+    Métriques : \textbf{Spearman} $\rho$ et \textbf{UUAS} (score
+    d'attachement non-étiqueté).
+
+    \column{0.43\textwidth}
+    \begin{tikzpicture}[scale=0.85, every node/.style={font=\footnotesize}]
+      \node (v) at (0,2) {verb};
+      \node (s) at (-1.1,1) {subj};
+      \node (o) at (1.1,1) {obj};
+      \draw (v) -- (s);
+      \draw (v) -- (o);
+      \node[gray] at (0,2.6) {arbre vrai};
+
+      \draw[->, thick, accent] (1.6,1.5) -- (3.4,1.5)
+        node[midway, above, black] {\scriptsize sonde $B$};
+
+      \node at (4.7,2.6) {$\hat d$ prédit};
+      \foreach \i/\j/\v in {%
+        0/0/0, 0/1/1, 0/2/1,
+        1/0/1, 1/1/0, 1/2/2,
+        2/0/1, 2/1/2, 2/2/0}
+        {\node[draw=gray!40, minimum size=12pt, inner sep=1pt]
+          at ({4.1 + 0.45*\j}, {1.9 - 0.4*\i}) {\v};}
+    \end{tikzpicture}
+  \end{columns}
+\end{frame}
+
+% =====================================================================
+% 6. Résultats H&M sur l'anglais
+% =====================================================================
+\begin{frame}{Leur résultat sur l'anglais : BERT \emph{encode bien} la syntaxe}
+  \centering
+  \includegraphics[width=0.78\textwidth]{figures/hm_english_results.jpg}
+
+  \vspace{0.2cm}
+  \footnotesize
+  \begin{itemize}\setlength\itemsep{2pt}
+    \item BERT-base couche 7 : \alert{UUAS $0{,}80$}, Spearman $0{,}85$
+          --- proche des analyseurs entièrement supervisés, sans aucun
+          entraînement syntaxique.
+    \item Courbe en cloche sur les couches (pic au milieu), confirmé
+          pour PTB anglais.
+    \item Baseline linéaire (sans contextualisation) : $\sim 0{,}49$ UUAS.
+  \end{itemize}
+  $\Rightarrow$ la syntaxe \emph{vit} dans la géométrie de BERT, du moins
+  en anglais.
+\end{frame}
+
+% =====================================================================
+% 7. Ce que nous ajoutons
+% =====================================================================
+\begin{frame}{Ce que nous ajoutons}
+  Hewitt \& Manning ont répondu à la question sur \alert{BERT anglais}.
+  Deux suites naturelles restent ouvertes :
+
+  \vspace{0.4cm}
+  \begin{enumerate}\setlength\itemsep{8pt}
+    \item \textbf{Transfert cross-lingue.} La même géométrie syntaxique
+          existe-t-elle dans \alert{BERT multilingue} pour des langues
+          autres que l'anglais ? Concrètement : fonctionne-t-elle sur
+          \alert{l'espagnol} via mBERT ?
+    \item \textbf{Géométrie vs.\ traits.} L'arbre syntaxique est-il une
+          \alert{forme rigide} dans l'espace de représentation, ou des
+          \alert{traits} que la sonde doit amplifier par des
+          étirements non uniformes ?
+  \end{enumerate}
+
+  \vspace{0.5cm}
+  Nos deux contributions répondent à ces deux questions :
+  \begin{itemize}
+    \item Réplication couche par couche sur \ancora.
+    \item \textbf{Sonde isométrique} --- une variante contrainte qui
+          isole la rotation de l'étirement.
+  \end{itemize}
+\end{frame}
+
+% =====================================================================
+% 8. La sonde isométrique
+% =====================================================================
+\begin{frame}{Contribution : la sonde \emph{isométrique}}
+  La sonde linéaire \alert{tourne et étire} l'espace mBERT.
+  Deux opérations entremêlées. \quad \textbf{Question :} laquelle compte ?
+
+  \vspace{0.5cm}
+  \textbf{Sonde isométrique :} contraindre la projection à être orthogonale.
+  \[
+    B_\mathrm{iso} B_\mathrm{iso}^\top \;=\; I_r
+    \qquad \Longrightarrow \qquad
+    \kappa(B_\mathrm{iso}) = 1, \;\; \text{rotation seule}
+  \]
+
+  \vspace{0.3cm}
+  \begin{itemize}
+    \item Si la syntaxe est une \alert{forme rigide} dans l'espace mBERT
+          $\;\to\;$ l'isométrique doit égaler la sonde linéaire.
+    \item Si la syntaxe nécessite un \alert{étirement anisotrope}
+          $\;\to\;$ l'isométrique s'effondre.
+  \end{itemize}
+
+  \vfill
+  \footnotesize
+  \emph{Implémentation :} \texttt{torch.nn.utils.parametrizations.orthogonal}
+  appliqué à la couche de projection.
+\end{frame}
+
+% =====================================================================
+% 9. Deux scénarios
+% =====================================================================
+\begin{frame}{Deux scénarios --- ce que l'expérience peut distinguer}
+  \centering
+  \includegraphics[width=0.95\textwidth]{figures/two_hypotheses.jpg}
+
+  \vspace{0.15cm}
+  \footnotesize
+  \textcolor{gray!70!black}{Adapté de Lahoz, Aswal \& Goranovic
+  (projet M2, Paris-Saclay, déc.\ 2025).}
+\end{frame}
+
+% =====================================================================
+% 10. Données
+% =====================================================================
+\begin{frame}{Données : UD\_Spanish-AnCora}
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+    \textbf{Treebank.} Partie espagnole d'AnCora
+    (Taulé et al.\ 2008), distribuée via Universal Dependencies
+    (\textsc{cc by} 4.0). Texte journalistique, annotations en
+    dépendances.
+
+    \vspace{0.4cm}
+    \begin{tabular}{lrr}
+      \toprule
+      partition & phrases & lignes \\
+      \midrule
+      train & 14\,287 & 453\,039 \\
+      dev   &  1\,654 &  53\,476 \\
+      test  &  1\,721 &  53\,622 \\
+      \bottomrule
+    \end{tabular}
+
+    \vspace{0.3cm}
+    \footnotesize
+    L'espagnol amène deux complications absentes en PTB anglais :
+    \emph{contractions} (\textit{del}, \textit{al}, \textit{celebrarlos}\ldots)
+    et \emph{n\oe{}uds vides} (sujets pro-drop).
+
+    \column{0.43\textwidth}
+    \footnotesize
+    \textbf{Encodeur.} \texttt{bert-base-multilingual-cased} (mBERT) ---
+    104 langues, figé. 12 couches transformer + couche d'entrée.
+
+    \medskip
+    \textbf{Sonde.} Rang $r{=}128$, perte $\ell_1$, Adam, 30 époques,
+    early stopping (patience 4). Une seule graine.
+
+    \medskip
+    \textbf{Pourquoi mBERT ?} On teste si la géométrie syntaxique
+    découverte par Hewitt-Manning en anglais est \alert{partagée}
+    entre les langues (Chi et al.\ 2020) ou spécifique à l'anglais.
+  \end{columns}
+\end{frame}
+
+% =====================================================================
+% 11. Trois pièges du pipeline
+% =====================================================================
+\begin{frame}{Trois pièges du pipeline --- et leur coût}
+  Nous avons relancé le pipeline avec soin et identifié trois bugs
+  silencieux qui, une fois corrigés, modifient toutes les métriques.
+
+  \vspace{0.3cm}
+  \begin{enumerate}\setlength\itemsep{6pt}
+    \item \textbf{Les n\oe{}uds vides fuitent en texte.} \ancora compte
+          6\,499 n\oe{}uds vides en train (typiquement les sujets
+          pro-drop espagnols). Leur champ \textsc{form} est le caractère
+          souligné. Si on ne les filtre pas, mBERT reçoit des tokens
+          \texttt{\_} comme s'il s'agissait de mots, et la sonde
+          s'entraîne sur une géométrie qui ne correspond à rien.
+    \item \textbf{Le filtre de ponctuation est spécifique au treebank.}
+          Le code original filtre les balises XPOS PTB anglaises
+          (\texttt{","}, \texttt{"."}, \ldots). La ponctuation espagnole
+          a d'autres balises dans AnCora (\texttt{fc, fpa, fpt, fe}
+          ou \texttt{UPOS=PUNCT}). Le filtre anglais ne capture rien
+          ici, et la ponctuation gonfle silencieusement l'UUAS.
+    \item \textbf{Indexation des couches.} La config livrée sélectionne
+          la couche 12 par défaut ; nous balayons les 13 couches et
+          choisissons sur dev.
+  \end{enumerate}
+
+  \vspace{0.3cm}
+  \centering
+  \alert{$+51\%$ d'UUAS} en nettoyant le pipeline seul --- aucun
+  changement de modèle.
+\end{frame}
+
+% =====================================================================
+% 12. Résultat 1 : layer sweep
+% =====================================================================
+\begin{frame}{Résultat 1 --- la syntaxe espagnole pique à la couche 7}
+  \centering
+  \begin{tikzpicture}
+  \begin{axis}[
+    width=0.78\textwidth, height=5.2cm,
+    xlabel={couche mBERT},
+    ylabel={métrique (dev)},
+    xtick=data,
+    legend pos=south west, legend cell align=left,
+    legend style={font=\footnotesize},
+    ymin=0.5, ymax=0.9, ymajorgrids,
+    grid style={dashed, gray!30},
+    label style={font=\footnotesize},
+    tick label style={font=\footnotesize},
+  ]
+  \addplot[mark=*, thick, color=blue!70!black] coordinates {
+    (0,0.710) (1,0.721) (2,0.746) (3,0.803) (4,0.821) (5,0.835)
+    (6,0.855) (7,0.860) (8,0.858) (9,0.848) (10,0.837) (11,0.827) (12,0.791)
+  };
+  \addlegendentry{Spearman $\rho_{5\text{-}50}$}
+  \addplot[mark=square*, dashed, thick, color=accent] coordinates {
+    (0,0.562) (1,0.562) (2,0.610) (3,0.703) (4,0.727) (5,0.757)
+    (6,0.785) (7,0.760) (8,0.754) (9,0.747) (10,0.727) (11,0.699) (12,0.620)
+  };
+  \addlegendentry{UUAS}
+  \draw[gray, dashed] (axis cs:7,0.5) -- (axis cs:7,0.9);
+  \node[gray, font=\scriptsize] at (axis cs:7.4,0.55) {couche 7};
+  \end{axis}
+  \end{tikzpicture}
+
+  \footnotesize
+  \begin{itemize}\setlength\itemsep{2pt}
+    \item Courbe en cloche reproduisant celle de Hewitt-Manning sur l'anglais.
+    \item Meilleure couche 7 : \alert{Spearman $0{,}860$},
+          \alert{UUAS $0{,}760$}.
+  \end{itemize}
+\end{frame}
+
+% =====================================================================
+% 13. Comparaison anglais vs espagnol
+% =====================================================================
+\begin{frame}{Transfert cross-lingue : seulement $-4$ points d'UUAS}
+  \centering
+  \vspace{0.3cm}
+  \begin{tabular}{lcc}
+    \toprule
+                         & \textbf{H\&M (BERT anglais, PTB)} & \textbf{Nous (mBERT, AnCora)} \\
+    \midrule
+    Meilleure couche     & 7--8              & \textbf{7} \\
+    Spearman distance    & $\approx 0{,}85$  & \textbf{0{,}860} \\
+    UUAS                 & $\approx 0{,}80$  & \textbf{0{,}760} \\
+    Rang de la sonde     & 1024              & 128 \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{0.5cm}
+  \begin{itemize}\setlength\itemsep{4pt}
+    \item Même organisation en cloche sur les couches, pic décalé d'au
+          plus une couche.
+    \item Spearman \emph{légèrement plus haut} en espagnol ; UUAS
+          seulement $4$ points en dessous, malgré la dilution
+          multilingue de mBERT sur 104 langues.
+    \item Forte évidence pour le \alert{sous-espace syntaxique
+          indépendant de la langue} (Chi et al., ACL 2020).
+  \end{itemize}
+\end{frame}
+
+% =====================================================================
+% 14. Résultat 2 : Pancake Effect
+% =====================================================================
+\begin{frame}{Résultat 2 --- la syntaxe espagnole \emph{n'est pas} une forme rigide}
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+    \footnotesize
+    \begin{tabular}{lrrr}
+      \toprule
+      Sonde (couche 7) & Spearman & UUAS & $\kappa(B)$ \\
+      \midrule
+      \textbf{Linéaire} & \textbf{0{,}860} & \textbf{0{,}760} & 3{,}74 \\
+      Isométrique       & 0{,}355 & 0{,}272 & 1{,}00 \\
+      \midrule
+      $\Delta$ relatif & $-59\%$ & $\alert{-64\%}$ & --- \\
+      \bottomrule
+    \end{tabular}
+
+    \vspace{0.3cm}
+    \normalsize
+    Contraindre la sonde à être \alert{orthogonale} effondre les
+    performances de $-64\%$ d'UUAS.
+
+    \medskip
+    \footnotesize
+    Spectre singulier de $B$ :
+    $\sigma_{\max}{=}0{,}44$, $\sigma_{\min}{=}0{,}12$,
+    donc $\kappa = 3{,}74$ (\emph{anisotropie modérée}).
+
+    \column{0.43\textwidth}
+    \textbf{Interprétation : l'effet \emph{Pancake}}\\[4pt]
+    L'arbre syntaxique espagnol est \alert{aplati} dans des directions
+    de faible variance de l'espace mBERT. La sonde doit les
+    \emph{amplifier} ($\sim 4{\times}$) pour faire ressortir la
+    structure de l'arbre.
+
+    \vspace{0.3cm}
+    \footnotesize
+    Cohérent avec l'anisotropie générale des représentations
+    contextuelles (Ethayarajh, EMNLP 2019) : les directions de forte
+    magnitude encodent fréquence / domaine, pas la structure.
+  \end{columns}
+\end{frame}
+
+% =====================================================================
+% 15. Limitations
+% =====================================================================
+\begin{frame}{Ce que je ferais ensuite (limitations)}
+  \begin{itemize}\setlength\itemsep{6pt}
+    \item \textbf{Plusieurs graines.} Tous les chiffres sont sur une
+          seule graine (seed 0). Refaire avec $\geq 5$ graines et
+          reporter moyenne $\pm$ écart-type pour l'écart linéaire vs.\
+          isométrique. Le \emph{harness} est déjà en place.
+    \item \textbf{Test set.} Je n'ai délibérément pas touché à la
+          partition test avant que la comparaison multi-graines soit
+          finale.
+    \item \textbf{Tâche de contrôle} (Hewitt \& Liang, EMNLP 2019).
+          Comparer contre une sonde entraînée sur des étiquettes
+          \emph{aléatoires} par type de mot pour borner la capacité
+          intrinsèque de la sonde.
+    \item \textbf{Autres encodeurs.} Comparer contre des encodeurs
+          espagnols monolingues (BETO, RoBERTa-bne).
+  \end{itemize}
+\end{frame}
+
+% =====================================================================
+% Pont vers le multimodal
+% =====================================================================
+\begin{frame}{Du \emph{probing} syntaxique au \emph{probing} multimodal}
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+    La sonde + diagnostic géométrique développée ici se généralise
+    \alert{directement} aux modèles multimodaux.
+
+    \vspace{0.3cm}
+    \textbf{Mêmes questions, autre propriété :}
+    \begin{itemize}\setlength\itemsep{4pt}
+      \item Où vit chaque modalité (vision, audio, texte) ?
+      \item Sont-elles \emph{rigidement} préservées
+            ($\kappa$ élevé en isolant chacune) ?
+      \item À quelle couche l'interaction se cristallise --- et
+            observe-t-on un \emph{effondrement modal} ?
+    \end{itemize}
+
+    \vspace{0.3cm}
+    \footnotesize
+    Connecte avec les phénomènes de modality collapse rapportés par
+    \textbf{Park et al.\ 2025 (AAAI)} et
+    \textbf{Wang et al.\ 2025 (CVPR)}.
+
+    \column{0.43\textwidth}
+    \centering
+    \footnotesize
+    \textbf{Ce travail \quad $\Longrightarrow$ \quad doctorat}
+
+    \vspace{0.3cm}
+    \begin{tabular}{ll}
+      \toprule
+      Aujourd'hui (syntaxe) & Doctorat (multimodal) \\
+      \midrule
+      couches mBERT  & couches MLLM \\
+      axes syntaxiques & axes par modalité \\
+      effet Pancake & modality collapse \\
+      $\kappa(B)$    & $\kappa$ modal \\
+      arbre UD & raisonnement vidéo-QA \\
+      \bottomrule
+    \end{tabular}
+
+    \vspace{0.4cm}
+    Même méthodologie, dimension supérieure.
+  \end{columns}
+\end{frame}
+
+% =====================================================================
+% À retenir
+% =====================================================================
+\begin{frame}{À retenir}
+  \textbf{Trois choses}
+  \begin{enumerate}\setlength\itemsep{4pt}
+    \item Réplication de la sonde structurelle de Hewitt-Manning sur
+          l'espagnol : \alert{UUAS $0{,}76$ à la couche 7}, seulement
+          $4$ points en dessous du pic anglais.
+    \item Documentation de \alert{trois pièges de réplication} qui
+          empoisonnaient silencieusement le pipeline ($+51\%$ d'UUAS
+          en les corrigeant).
+    \item Introduction de la \emph{sonde isométrique} : une chute de
+          $-64\%$ d'UUAS montre que la géométrie syntaxique est
+          \alert{étirable, pas rigide} (effet Pancake, $\kappa = 3{,}74$).
+  \end{enumerate}
+
+  \vfill
+  \centering
+  \alert{Merci.} \quad
+  \footnotesize
+  \textcolor{gray}{Code, rapport technique et runbook disponibles --- prêt à approfondir tout détail.}
+\end{frame}
+
+\end{document}
